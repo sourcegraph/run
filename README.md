@@ -1,131 +1,80 @@
-# Design principles
+# 🏃‍♂️ run
 
-- We don't case about stderr / stdout, we assume we never know, don't trust the tool.
+A new way to execute commands in Go
+
+## Example usage
+
+<!-- START EXAMPLE -->
 
 ```go
 package main
 
 import (
-	"context"
-	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"strings"
+  "bytes"
+  "context"
+  "fmt"
+  "log"
+  "os"
+
+  "github.com/sourcegraph/run"
 )
 
-type FilterFunc func(string) CmdOut
-
-type CmdOut struct {
-	filters
-}
-
-func Cmd(ctx context.Context, args ...string) NewCmder {
-	return nil
-}
-
-type NewCmder interface {
-	WithInput(io.Reader) Cmd
-	InDir(string) Cmd
-	Env(map[string]string) Cmd
-	Run() CmdOuptutter
-	Raw() *exec.Command
-}
-
-type CmdOuptutter interface {
-	StdErr() CmdOut // discard stdout
-	StdOut() CmdOut // discard stderr
-
-	Mode(mode string) CmdOut // add a side effect
-	Filter(func(string) string) CmdOut
-
-	Write(io.Writer) error
-	Lines() ([]string, error)
-
-	Err() CmdErr
-
-	// Later
-	Jq(string) CmdOut
-}
-
-func main2() {
-	out := Cmd("gsutil blbaldbla").Filter(func(in string) { //
-		// here
-	})
-
-	out := Cmd("gsutil blbaldbla").WithInput(StringsReader([]string{}))
-
-	err, _ := out.Lines()
-	CmdStderr(err) //
-}
-
-type CmdErr struct {
-	exitError error
-}
-
-// Implements https://sourcegraph.com/github.com/urfave/cli/-/blob/errors.go?L79&subtree=true
-func ExitCode() int { return 20 }
-
-func (e *CmdErr) Error() string {
-	return "exit status: 20 broken bread" // stderr, all of it yolo
-}
-
-func (e *CmdErr) StatusCode() int {
-	return 20
-}
-
-func (e *CmdErr) Filter(func(string) string) error {
-	return nil
-}
-
-func (e *CmdErr) Err() error {
-	return nil
-}
-
-func ErrStatusCode(err error) int {
-	return err.(*CmdErr).StatusCode()
-}
-
-func Cmd(args ...string) error {
-	strings.Join(args, " ")
-	return nil
-}
-
 func main() {
+  ctx := context.Background()
 
-	cmd := Cmd("git checkout main")
-	args := []string{"git checkout", "main"}
-	cmd = Cmd(args...)
-	// cmd = Cmdf("git checkout %", branch)
+  // Easily stream all output back to standard out
+  err := run.Cmd(ctx, "echo", "hello world").Run().Stream(os.Stdout)
+  if err != nil {
+    log.Fatal(err.Error())
+  }
 
-	str, err := pipe.Exec("").String()
+  // Or collect filter and modify standard out, then collect string lines from it
+  lines, err := run.Cmd(ctx, "ls").Run().
+    Filter(func(s []byte) ([]byte, bool) {
+      if !bytes.HasSuffix(s, []byte(".go")) {
+        return nil, true
+      }
+      return bytes.TrimSuffix(s, []byte(".go")), false
+    }).
+    Lines()
+  if err != nil {
+    log.Fatal(err.Error())
+  }
+  for i, l := range lines {
+    fmt.Printf("line %d: %q\n", i, l)
+  }
 
-	err := cmd.RunE()
-	if err != nil {
-		if cmd.Stderr() != "" {
-			fmt.Println(cmd.Stderr())
-		}
-	}
+  // Errors include standard error by default, so we can just stream stdout.
+  err = run.Cmd(ctx, "ls", "foobar").Run().StdOut().Stream(os.Stdout)
+  if err != nil {
+    println(err.Error()) // exit status 1: ls: foobar: No such file or directory
+  }
 
-	// quiet
+  // Generate data from a file, replacing tabs with spaces for Markdown purposes
+  var exampleData bytes.Buffer
+  exampleData.Write([]byte(exampleStart + "\n\n```go\n"))
+  if err = run.Cmd(ctx, "cat", "cmd/runexample/main.go").Run().
+    Filter(func(line []byte) ([]byte, bool) {
+      return bytes.ReplaceAll(line, []byte("\t"), []byte("  ")), false
+    }).
+    Stream(&exampleData); err != nil {
+    log.Fatal(err)
+  }
+  exampleData.Write([]byte("```\n\n" + exampleEnd))
 
-	// normal: only see stdout
+  // Render new README file
+  var readmeData bytes.Buffer
+  if err = run.Cmd(ctx, "cat", "README.md").Run().Stream(&readmeData); err != nil {
+    log.Fatal(err)
+  }
+  replaced := exampleBlockRegexp.ReplaceAll(readmeData.Bytes(), exampleData.Bytes())
 
-	// logging things +ls /foo/bar
-	//                stderr ...
-
-	cmd.Run().All().Mode(verbose).Filter().Write(os.Stdout)
-
-	cmd.Out()
-	cmd.CombinedOutput()
-
-	cmd.Output()
-	cmd.Stdout()
-	err == cmd.Err() // exitCode or other errors
-
-	out := cmd.Output() // CmdOutput
-	out.Lines().Filter("bladblab").Replace("Try", "Dave")
-	out.Replace()
-
+  // Pipe data to command
+  err = run.Cmd(ctx, "cp /dev/stdin README.md").WithInput(bytes.NewReader(replaced)).Run().Wait()
+  if err != nil {
+    log.Fatal(err)
+  }
 }
 ```
+
+<!-- END EXAMPLE -->
