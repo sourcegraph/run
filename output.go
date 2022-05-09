@@ -43,6 +43,10 @@ type Output interface {
 	Lines() ([]string, error)
 	// Wait waits for command completion and returns.
 	Wait() error
+
+	// Reader is implemented so that Output can be provided directly to another Command
+	// using Input().
+	io.Reader
 }
 
 // commandOutput is the core Output implementation, designed to be attached to an exec.Cmd.
@@ -100,7 +104,7 @@ func attachOutputAndRun(cmd *exec.Cmd) Output {
 			reader: combinedReader,
 
 			// Define cleanup for command
-			wait: func() (error, *bytes.Buffer) {
+			waitFunc: func() (error, *bytes.Buffer) {
 				cmdErr := cmd.Wait()
 				for _, closer := range closers {
 					closer.Close()

@@ -3,6 +3,7 @@ package run
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
 )
 
@@ -16,25 +17,28 @@ type aggregator struct {
 	// filterFuncs define line filters to be applied at aggregation time.
 	filterFuncs []LineFilter
 
-	// wait is called before aggregation exit.
-	wait func() (error, *bytes.Buffer)
+	// waitFunc is called before aggregation exit.
+	waitFunc func() (error, *bytes.Buffer)
+
+	// finalized is true if aggregator has already been consumed.
+	finalized bool
 }
 
 func (a *aggregator) Stream(dst io.Writer) error {
 	if len(a.filterFuncs) == 0 {
 		// Happy path, directly pipe output
 		go io.Copy(dst, a.reader)
-		return newError(a.wait())
+		return a.Wait()
 	}
 
 	// Pipe output via the filtered line pipe
 	go a.filteredLinePipe(func(l []byte) { dst.Write(append(l, byte('\n'))) })
-	return newError(a.wait())
+	return a.Wait()
 }
 
 func (a *aggregator) StreamLines(dst func(line []byte)) error {
 	go a.filteredLinePipe(dst)
-	return newError(a.wait())
+	return a.Wait()
 }
 
 func (a *aggregator) Lines() ([]string, error) {
@@ -42,11 +46,35 @@ func (a *aggregator) Lines() ([]string, error) {
 	go a.filteredLinePipe(func(line []byte) {
 		lines = append(lines, string(line))
 	})
-	return lines, newError(a.wait())
+	return lines, a.Wait()
+}
+
+func (a *aggregator) Read(read []byte) (int, error) {
+	if a.finalized {
+		return 0, io.EOF
+	}
+
+	// Stream output to a buffer
+	buffer := bytes.NewBuffer(make([]byte, 0, len(read)))
+	err := a.Stream(buffer)
+	defer buffer.Reset()
+
+	// Populate data
+	for i, b := range buffer.Bytes() {
+		if i < len(read) {
+			read[i] = b
+		}
+	}
+
+	return buffer.Len() + 1, err
 }
 
 func (a *aggregator) Wait() error {
-	return newError(a.wait())
+	if a.finalized {
+		return errors.New("output aggregator has already been finalized")
+	}
+	a.finalized = true
+	return newError(a.waitFunc())
 }
 
 func (a *aggregator) filteredLinePipe(send func([]byte)) {

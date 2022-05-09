@@ -45,8 +45,8 @@ func (c *Command) Run() Output {
 	return attachOutputAndRun(c.cmd)
 }
 
-// InDir sets the directory this command should be executed in.
-func (c *Command) InDir(dir string) *Command {
+// Dir sets the directory this command should be executed in.
+func (c *Command) Dir(dir string) *Command {
 	if c.cmd == nil {
 		return c
 	}
@@ -55,8 +55,8 @@ func (c *Command) InDir(dir string) *Command {
 	return c
 }
 
-// WithInput pipes the given io.Reader to the command.
-func (c *Command) WithInput(input io.Reader) *Command {
+// Input pipes the given io.Reader to the command.
+func (c *Command) Input(input io.Reader) *Command {
 	if c.cmd == nil {
 		return c
 	}
@@ -65,8 +65,8 @@ func (c *Command) WithInput(input io.Reader) *Command {
 	return c
 }
 
-// WithEnv adds the given environment variables to the command.
-func (c *Command) WithEnv(env map[string]string) *Command {
+// Env adds the given environment variables to the command.
+func (c *Command) Env(env map[string]string) *Command {
 	if c.cmd == nil {
 		return c
 	}
@@ -79,7 +79,7 @@ func (c *Command) WithEnv(env map[string]string) *Command {
 
 // InheritEnv adds the given strings representing the environment (key=value) to the
 // command, for example os.Environ().
-func (c *Command) WithEnviron(environ []string) *Command {
+func (c *Command) Environ(environ []string) *Command {
 	if c.cmd == nil {
 		return c
 	}

@@ -53,7 +53,7 @@ func main() {
   // Generate data from a file, replacing tabs with spaces for Markdown purposes
   var exampleData bytes.Buffer
   exampleData.Write([]byte(exampleStart + "\n\n```go\n"))
-  if err = run.Cmd(ctx, "cat", "cmd/runexample/main.go").Run().
+  if err = run.Cmd(ctx, "cat", "cmd/example/main.go").Run().
     Filter(func(line []byte) ([]byte, bool) {
       return bytes.ReplaceAll(line, []byte("\t"), []byte("  ")), false
     }).
@@ -70,7 +70,7 @@ func main() {
   replaced := exampleBlockRegexp.ReplaceAll(readmeData.Bytes(), exampleData.Bytes())
 
   // Pipe data to command
-  err = run.Cmd(ctx, "cp /dev/stdin README.md").WithInput(bytes.NewReader(replaced)).Run().Wait()
+  err = run.Cmd(ctx, "cp /dev/stdin README.md").Input(bytes.NewReader(replaced)).Run().Wait()
   if err != nil {
     log.Fatal(err)
   }
