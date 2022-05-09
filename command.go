@@ -16,7 +16,7 @@ type Command struct {
 	// cmd is the underlying exec.Cmd that carries the command execution.
 	cmd *exec.Cmd
 	// out configures command output.
-	out *Output
+	out Output
 	// buildError represents an error that occured when building this command.
 	buildError error
 }
@@ -34,12 +34,12 @@ func Cmd(ctx context.Context, parts ...string) *Command {
 }
 
 // Run starts command execution and returns Output, which defaults to combined output.
-func (c *Command) Run() *Output {
+func (c *Command) Run() Output {
 	if c.buildError != nil {
-		return failedToStartOutput(c.buildError)
+		return newErrorOutput(c.buildError)
 	}
 	if c.cmd == nil {
-		return failedToStartOutput(errors.New("Command not instantiated"))
+		return newErrorOutput(errors.New("Command not instantiated"))
 	}
 
 	return attachOutputAndRun(c.cmd)

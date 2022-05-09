@@ -14,26 +14,63 @@ import (
 type LineFilter func(line []byte) (newLine []byte, skip bool)
 
 // Output configures output and aggregation from a command.
-type Output struct {
+//
+// It is behind an interface to more easily enable mock outputs and build different types
+// of outputs, such as multi-outputs and error-only outputs, without complicating the core
+// commandOutput implementation.
+type Output interface {
+	// StdOut configures this Output to only provide StdErr. By default, Output works with
+	// combined output.
+	StdOut() Output
+	// StdErr configures this Output to only provide StdErr. By default, Output works with
+	// combined output.
+	StdErr() Output
+	// Filter adds a filter to this Output. It is only applied at aggregation time using
+	// e.g. Stream, Lines, and so on.
+	Filter(filter LineFilter) Output
+
+	// TODO wishlist functionality
+	// Mode(mode OutputMode) Output
+	// JQ(query string) Output
+
+	// Stream writes filtered output from the command to the destination writer until
+	// command completion.
+	Stream(dst io.Writer) error
+	// StreamLines writes filtered output from the command and sends it line by line to the
+	// destination callback until command completion.
+	StreamLines(dst func(line []byte)) error
+	// Lines waits for command completion and aggregates filtered output from the command.
+	Lines() ([]string, error)
+	// Wait waits for command completion and returns.
+	Wait() error
+}
+
+// commandOutput is the core Output implementation, designed to be attached to an exec.Cmd.
+//
+// It only handles piping output and configuration - aggregation is handled by the embedded
+// aggregator.
+type commandOutput struct {
 	stdOut io.Reader
 	stdErr io.Reader
 
 	*aggregator
 }
 
-func attachOutputAndRun(cmd *exec.Cmd) *Output {
+var _ Output = &commandOutput{}
+
+func attachOutputAndRun(cmd *exec.Cmd) Output {
 	closers := make([]io.Closer, 0, 3*2)
 
 	combinedReader, combinedWriter, err := os.Pipe()
 	if err != nil {
-		return failedToStartOutput(err)
+		return newErrorOutput(err)
 	}
 	closers = append(closers, combinedReader, combinedWriter)
 
 	// Pipe stdout
 	stdoutReader, stdoutWriter, err := os.Pipe()
 	if err != nil {
-		return failedToStartOutput(err)
+		return newErrorOutput(err)
 	}
 	closers = append(closers, stdoutReader, stdoutWriter)
 	cmd.Stdout = io.MultiWriter(stdoutWriter, combinedWriter)
@@ -43,7 +80,7 @@ func attachOutputAndRun(cmd *exec.Cmd) *Output {
 	// creation.
 	stderrReader, stderrWriter, err := os.Pipe()
 	if err != nil {
-		return failedToStartOutput(err)
+		return newErrorOutput(err)
 	}
 	closers = append(closers, stderrReader, stderrWriter)
 	var stderrCopy bytes.Buffer
@@ -51,10 +88,10 @@ func attachOutputAndRun(cmd *exec.Cmd) *Output {
 
 	// Start command execution
 	if err := cmd.Start(); err != nil {
-		return failedToStartOutput(err)
+		return newErrorOutput(err)
 	}
 
-	return &Output{
+	return &commandOutput{
 		stdOut: stdoutReader,
 		stdErr: stderrReader,
 
@@ -74,26 +111,17 @@ func attachOutputAndRun(cmd *exec.Cmd) *Output {
 	}
 }
 
-func failedToStartOutput(err error) *Output {
-	return &Output{aggregator: &aggregator{parentErr: err}}
-}
-
-func (o *Output) StdErr() *Output {
-	o.aggregator.reader = o.stdErr
-	return o
-}
-
-func (o *Output) StdOut() *Output {
+func (o *commandOutput) StdOut() Output {
 	o.aggregator.reader = o.stdOut
 	return o
 }
 
-func (o *Output) Filter(filter LineFilter) *Output {
-	o.aggregator.filterFuncs = append(o.aggregator.filterFuncs, filter)
+func (o *commandOutput) StdErr() Output {
+	o.aggregator.reader = o.stdErr
 	return o
 }
 
-// TODO
-// func (o *Output) Mode(mode OutputMode) *Output {
-// 	return o
-// }
+func (o *commandOutput) Filter(filter LineFilter) Output {
+	o.aggregator.filterFuncs = append(o.aggregator.filterFuncs, filter)
+	return o
+}

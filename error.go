@@ -7,10 +7,8 @@ import (
 	"os/exec"
 )
 
-type runError struct {
-	nonExecErr error
-	execErr    *exec.ExitError
-}
+// runError wraps exec.ExitError such that it always includes the embedded stderr.
+type runError struct{ execErr *exec.ExitError }
 
 var _ error = &runError{}
 
@@ -24,24 +22,18 @@ func newError(err error, stdErr *bytes.Buffer) error {
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		if stdErr != nil {
-			// Not assigned by default
+			// Not assigned by default using cmd.Start(), so we consume our copy of stderr
+			// and set it here.
 			exitErr.Stderr = bytes.TrimSpace(stdErr.Bytes())
+			stdErr.Reset()
 		}
-		return &runError{
-			execErr: exitErr,
-		}
+		return &runError{execErr: exitErr}
 	}
 
-	return &runError{
-		nonExecErr: err,
-	}
+	return err
 }
 
 func (e *runError) Error() string {
-	if e.nonExecErr != nil {
-		return e.nonExecErr.Error()
-	}
-
 	if len(e.execErr.Stderr) == 0 {
 		return e.execErr.String()
 	}
@@ -52,9 +44,5 @@ func (e *runError) Error() string {
 //
 // Implements https://sourcegraph.com/github.com/urfave/cli/-/blob/errors.go?L79&subtree=true
 func (e *runError) ExitCode() int {
-	if e.nonExecErr != nil {
-		return 1
-	}
-
 	return e.execErr.ExitCode()
 }
