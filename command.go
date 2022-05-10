@@ -55,13 +55,28 @@ func (c *Command) Dir(dir string) *Command {
 	return c
 }
 
-// Input pipes the given io.Reader to the command.
+// Input pipes the given io.Reader to the command. If an input is already set, the given
+// input is appended.
 func (c *Command) Input(input io.Reader) *Command {
 	if c.cmd == nil {
 		return c
 	}
 
-	c.cmd.Stdin = input
+	if c.cmd.Stdin != nil {
+		c.cmd.Stdin = io.MultiReader(c.cmd.Stdin, input)
+	} else {
+		c.cmd.Stdin = input
+	}
+	return c
+}
+
+// ResetInput sets the command's input to nil.
+func (c *Command) ResetInput() *Command {
+	if c.cmd == nil {
+		return c
+	}
+
+	c.cmd.Stdin = nil
 	return c
 }
 

@@ -3,6 +3,7 @@ package run_test
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 
 	qt "github.com/frankban/quicktest"
@@ -51,5 +52,32 @@ func TestRunAndAggregate(t *testing.T) {
 			c.Assert(err, qt.IsNil)
 			c.Assert(string(b[0:n-1]), qt.Equals, "hello world\n")
 		})
+	})
+}
+
+func TestInput(t *testing.T) {
+	c := qt.New(t)
+	ctx := context.Background()
+
+	c.Run("set multiple inputs", func(c *qt.C) {
+		cmd := run.Cmd(ctx, "cat").
+			Input(strings.NewReader("hello")).
+			Input(strings.NewReader(" ")).
+			Input(strings.NewReader("world\n"))
+
+		lines, err := cmd.Run().Lines()
+		c.Assert(err, qt.IsNil)
+		c.Assert(lines[0], qt.Equals, "hello world")
+	})
+
+	c.Run("reset input", func(c *qt.C) {
+		cmd := run.Cmd(ctx, "cat").
+			Input(strings.NewReader("hello")).
+			ResetInput().
+			Input(strings.NewReader("world"))
+
+		lines, err := cmd.Run().Lines()
+		c.Assert(err, qt.IsNil)
+		c.Assert(lines[0], qt.Equals, "world")
 	})
 }
