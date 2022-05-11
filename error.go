@@ -10,7 +10,7 @@ import (
 // runError wraps exec.ExitError such that it always includes the embedded stderr.
 type runError struct{ execErr *exec.ExitError }
 
-var _ error = &runError{}
+var _ ExitCoder = &runError{}
 
 // newError creats a new *Error, and can be provided a nil error. If stdErrBuffer is not
 // nil, consumes and resets it.
@@ -40,9 +40,6 @@ func (e *runError) Error() string {
 	return fmt.Sprintf("%s: %s", e.execErr.String(), string(e.execErr.Stderr))
 }
 
-// ExitCode returns the exit code if set, or 0 otherwise (including if the error is nil).
-//
-// Implements https://sourcegraph.com/github.com/urfave/cli/-/blob/errors.go?L79&subtree=true
 func (e *runError) ExitCode() int {
 	return e.execErr.ExitCode()
 }
