@@ -16,7 +16,10 @@ func ExampleExitCode() {
 	err = Cmd(ctx, "echo 'hello world!'").Run().Wait()
 	fmt.Println(ExitCode(err))
 
+	err = Cmd(ctx, "non-existing-binary").Run().Wait()
+	fmt.Println(ExitCode(err))
 	// Output:
 	// 123
 	// 0
+	// 1
 }
