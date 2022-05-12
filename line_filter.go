@@ -1,5 +1,7 @@
 package run
 
+import "context"
+
 // LineFilter allows modifications of individual lines from Output.
 //
 // An explicit "skip" return parameter is required because many bytes library functions
@@ -17,7 +19,7 @@ func JQFilter(query string) (LineFilter, error) {
 	}
 
 	return func(line []byte) ([]byte, bool) {
-		b, err := execJQ(jqCode, line)
+		b, err := execJQ(context.TODO(), jqCode, line)
 		if err != nil {
 			return []byte(err.Error()), false
 		}

@@ -2,6 +2,7 @@ package run
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"os/exec"
@@ -59,7 +60,7 @@ type commandOutput struct {
 
 var _ Output = &commandOutput{}
 
-func attachOutputAndRun(cmd *exec.Cmd) Output {
+func attachOutputAndRun(ctx context.Context, cmd *exec.Cmd) Output {
 	closers := make([]io.Closer, 0, 3*2)
 
 	combinedReader, combinedWriter, err := os.Pipe()
@@ -97,6 +98,8 @@ func attachOutputAndRun(cmd *exec.Cmd) Output {
 		stdErr: stderrReader,
 
 		aggregator: &aggregator{
+			ctx: ctx,
+
 			// Default to all output
 			reader: combinedReader,
 

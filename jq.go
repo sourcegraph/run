@@ -2,6 +2,7 @@ package run
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -22,7 +23,7 @@ func buildJQ(query string) (*gojq.Code, error) {
 }
 
 // execJQ executes the compiled jq query against content.
-func execJQ(jqCode *gojq.Code, content []byte) ([]byte, error) {
+func execJQ(ctx context.Context, jqCode *gojq.Code, content []byte) ([]byte, error) {
 	if len(content) == 0 {
 		return nil, nil
 	}
@@ -33,7 +34,7 @@ func execJQ(jqCode *gojq.Code, content []byte) ([]byte, error) {
 	}
 
 	var newLine bytes.Buffer
-	iter := jqCode.Run(input)
+	iter := jqCode.RunWithContext(ctx, input)
 	for {
 		v, ok := iter.Next()
 		if !ok {

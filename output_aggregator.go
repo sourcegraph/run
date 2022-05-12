@@ -3,6 +3,7 @@ package run
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 )
@@ -10,6 +11,8 @@ import (
 // aggregator implements output finalization and formatting, and should be embedded in
 // commandOutput to fulfill the Output interface.
 type aggregator struct {
+	ctx context.Context
+
 	// reader is set to one of stdErr, stdOut, or both. It does not have filterFuncs
 	// applied, they are applied at aggregation time.
 	reader io.Reader
@@ -60,7 +63,7 @@ func (a *aggregator) JQ(query string) ([]byte, error) {
 		return nil, err
 	}
 
-	b, err := execJQ(jqCode, buffer.Bytes())
+	b, err := execJQ(a.ctx, jqCode, buffer.Bytes())
 	if err != nil {
 		return nil, err
 	}
