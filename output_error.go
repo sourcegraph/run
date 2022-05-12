@@ -4,8 +4,10 @@ import "io"
 
 type errorOutput struct{ err error }
 
-// newErrorOutput creates an Output that just returns error.
-func newErrorOutput(err error) Output { return &errorOutput{err: err} }
+// NewErrorOutput creates an Output that just returns error. Useful for allowing function
+// that help run Commands and want to just return an Output even if errors can happen
+// before command execution.
+func NewErrorOutput(err error) Output { return &errorOutput{err: err} }
 
 func (o *errorOutput) StdErr() Output                  { return o }
 func (o *errorOutput) StdOut() Output                  { return o }

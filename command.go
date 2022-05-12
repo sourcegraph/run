@@ -38,10 +38,10 @@ func Cmd(ctx context.Context, parts ...string) *Command {
 // Run starts command execution and returns Output, which defaults to combined output.
 func (c *Command) Run() Output {
 	if c.buildError != nil {
-		return newErrorOutput(c.buildError)
+		return NewErrorOutput(c.buildError)
 	}
 	if c.cmd == nil {
-		return newErrorOutput(errors.New("Command not instantiated"))
+		return NewErrorOutput(errors.New("Command not instantiated"))
 	}
 
 	return attachOutputAndRun(c.ctx, c.cmd)
