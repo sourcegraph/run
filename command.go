@@ -13,6 +13,7 @@ import (
 
 // Command builds a command for execution. Functions modify the underlying command.
 type Command struct {
+	ctx context.Context
 	// cmd is the underlying exec.Cmd that carries the command execution.
 	cmd *exec.Cmd
 	// out configures command output.
@@ -29,6 +30,7 @@ func Cmd(ctx context.Context, parts ...string) *Command {
 	}
 
 	return &Command{
+		ctx: ctx,
 		cmd: exec.CommandContext(ctx, params[0], params[1:]...),
 	}
 }
@@ -42,7 +44,7 @@ func (c *Command) Run() Output {
 		return newErrorOutput(errors.New("Command not instantiated"))
 	}
 
-	return attachOutputAndRun(c.cmd)
+	return attachOutputAndRun(c.ctx, c.cmd)
 }
 
 // Dir sets the directory this command should be executed in.
