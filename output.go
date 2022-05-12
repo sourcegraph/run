@@ -7,12 +7,6 @@ import (
 	"os/exec"
 )
 
-// LineFilter allows modifications of individual lines from Output.
-//
-// An explicit "skip" return parameter is required because many bytes library functions
-// return nil to denote empty lines, which should be preserved: https://github.com/golang/go/issues/46415
-type LineFilter func(line []byte) (newLine []byte, skip bool)
-
 // Output configures output and aggregation from a command.
 //
 // It is behind an interface to more easily enable mock outputs and build different types
@@ -31,7 +25,6 @@ type Output interface {
 
 	// TODO wishlist functionality
 	// Mode(mode OutputMode) Output
-	// JQ(query string) Output
 
 	// Stream writes filtered output from the command to the destination writer until
 	// command completion.
@@ -41,12 +34,16 @@ type Output interface {
 	StreamLines(dst func(line []byte)) error
 	// Lines waits for command completion and aggregates filtered output from the command.
 	Lines() ([]string, error)
-	// Wait waits for command completion and returns.
-	Wait() error
-
+	// JQ waits for command completion executes a JQ query against the entire output.
+	//
+	// Refer to https://github.com/itchyny/gojq for the specifics of supported syntax.
+	JQ(query string) ([]byte, error)
 	// Reader is implemented so that Output can be provided directly to another Command
 	// using Input().
 	io.Reader
+
+	// Wait waits for command completion and returns.
+	Wait() error
 }
 
 // commandOutput is the core Output implementation, designed to be attached to an exec.Cmd.

@@ -9,6 +9,8 @@ require (
 
 require (
 	github.com/google/go-cmp v0.5.7 // indirect
+	github.com/itchyny/gojq v0.12.7 // indirect
+	github.com/itchyny/timefmt-go v0.1.3 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.6.1 // indirect

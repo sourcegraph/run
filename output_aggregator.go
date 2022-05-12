@@ -49,6 +49,24 @@ func (a *aggregator) Lines() ([]string, error) {
 	return lines, a.Wait()
 }
 
+func (a *aggregator) JQ(query string) ([]byte, error) {
+	jqCode, err := buildJQ(query)
+	if err != nil {
+		return nil, err
+	}
+
+	var buffer bytes.Buffer
+	if err := a.Stream(&buffer); err != nil {
+		return nil, err
+	}
+
+	b, err := execJQ(jqCode, buffer.Bytes())
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
 func (a *aggregator) Read(read []byte) (int, error) {
 	if a.finalized {
 		return 0, io.EOF
