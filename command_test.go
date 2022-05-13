@@ -80,7 +80,7 @@ func TestInput(t *testing.T) {
 
 		lines, err := cmd.Run().Lines()
 		c.Assert(err, qt.IsNil)
-		c.Assert(lines, qt.Equals, []string{"hello world"})
+		c.Assert(lines, qt.CmpEquals(), []string{"hello world"})
 	})
 
 	c.Run("reset input", func(c *qt.C) {
@@ -91,6 +91,6 @@ func TestInput(t *testing.T) {
 
 		lines, err := cmd.Run().Lines()
 		c.Assert(err, qt.IsNil)
-		c.Assert(lines, qt.Equals, []string{"world"})
+		c.Assert(lines, qt.CmpEquals(), []string{"world"})
 	})
 }
