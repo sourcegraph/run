@@ -47,19 +47,6 @@ func TestRunAndAggregate(t *testing.T) {
 			c.Assert(string(lines[0]), qt.Equals, "hello world")
 		})
 
-		c.Run("JQ", func(c *qt.C) {
-			const testJSON = `{
-				"hello": "world"		
-			}`
-
-			res, err := run.Cmd(ctx, "cat").
-				Input(strings.NewReader(testJSON)).
-				Run().
-				JQ(".hello")
-			c.Assert(err, qt.IsNil)
-			c.Assert(string(res), qt.Equals, `"world"`)
-		})
-
 		c.Run("Read", func(c *qt.C) {
 			b := make([]byte, 100)
 			n, err := run.Cmd(ctx, command).Run().Read(b)
@@ -71,6 +58,19 @@ func TestRunAndAggregate(t *testing.T) {
 			err := run.Cmd(ctx, command).Run().Wait()
 			c.Assert(err, qt.IsNil)
 		})
+	})
+
+	c.Run("cat and JQ", func(c *qt.C) {
+		const testJSON = `{
+			"hello": "world"		
+		}`
+
+		res, err := run.Cmd(ctx, "cat").
+			Input(strings.NewReader(testJSON)).
+			Run().
+			JQ(".hello")
+		c.Assert(err, qt.IsNil)
+		c.Assert(string(res), qt.Equals, `"world"`)
 	})
 }
 
