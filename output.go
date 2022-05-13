@@ -65,14 +65,14 @@ func attachOutputAndRun(ctx context.Context, cmd *exec.Cmd) Output {
 
 	combinedReader, combinedWriter, err := os.Pipe()
 	if err != nil {
-		return newErrorOutput(err)
+		return NewErrorOutput(err)
 	}
 	closers = append(closers, combinedReader, combinedWriter)
 
 	// Pipe stdout
 	stdoutReader, stdoutWriter, err := os.Pipe()
 	if err != nil {
-		return newErrorOutput(err)
+		return NewErrorOutput(err)
 	}
 	closers = append(closers, stdoutReader, stdoutWriter)
 	cmd.Stdout = io.MultiWriter(stdoutWriter, combinedWriter)
@@ -82,7 +82,7 @@ func attachOutputAndRun(ctx context.Context, cmd *exec.Cmd) Output {
 	// creation.
 	stderrReader, stderrWriter, err := os.Pipe()
 	if err != nil {
-		return newErrorOutput(err)
+		return NewErrorOutput(err)
 	}
 	closers = append(closers, stderrReader, stderrWriter)
 	var stderrCopy bytes.Buffer
@@ -90,7 +90,7 @@ func attachOutputAndRun(ctx context.Context, cmd *exec.Cmd) Output {
 
 	// Start command execution
 	if err := cmd.Start(); err != nil {
-		return newErrorOutput(err)
+		return NewErrorOutput(err)
 	}
 
 	return &commandOutput{
