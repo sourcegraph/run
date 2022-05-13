@@ -4,12 +4,14 @@ go 1.18
 
 require (
 	bitbucket.org/creachadair/shell v0.0.7
+	github.com/djherbis/buffer v1.2.0
+	github.com/djherbis/nio/v3 v3.0.1
 	github.com/frankban/quicktest v1.14.3
+	github.com/itchyny/gojq v0.12.7
 )
 
 require (
 	github.com/google/go-cmp v0.5.7 // indirect
-	github.com/itchyny/gojq v0.12.7 // indirect
 	github.com/itchyny/timefmt-go v0.1.3 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect

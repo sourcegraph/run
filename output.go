@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"os"
 	"os/exec"
+
+	"github.com/djherbis/buffer"
+	"github.com/djherbis/nio/v3"
 )
 
 // Output configures output and aggregation from a command.
@@ -60,30 +62,23 @@ type commandOutput struct {
 
 var _ Output = &commandOutput{}
 
+const maxBufferSize = 128 * 1024
+
 func attachOutputAndRun(ctx context.Context, cmd *exec.Cmd) Output {
 	closers := make([]io.Closer, 0, 3*2)
 
-	combinedReader, combinedWriter, err := os.Pipe()
-	if err != nil {
-		return NewErrorOutput(err)
-	}
+	combinedReader, combinedWriter := nio.Pipe(buffer.New(maxBufferSize))
 	closers = append(closers, combinedReader, combinedWriter)
 
 	// Pipe stdout
-	stdoutReader, stdoutWriter, err := os.Pipe()
-	if err != nil {
-		return NewErrorOutput(err)
-	}
+	stdoutReader, stdoutWriter := nio.Pipe(buffer.New(maxBufferSize))
 	closers = append(closers, stdoutReader, stdoutWriter)
 	cmd.Stdout = io.MultiWriter(stdoutWriter, combinedWriter)
 
 	// Pipe stderr. We use a custom pipe because cmd.StderrPipe seems to have side effects
 	// that breaks io.MultiError, which we need to retain a copy of stderr for error
 	// creation.
-	stderrReader, stderrWriter, err := os.Pipe()
-	if err != nil {
-		return NewErrorOutput(err)
-	}
+	stderrReader, stderrWriter := nio.Pipe(buffer.New(maxBufferSize))
 	closers = append(closers, stderrReader, stderrWriter)
 	var stderrCopy bytes.Buffer
 	cmd.Stderr = io.MultiWriter(&stderrCopy, stderrWriter, combinedWriter)

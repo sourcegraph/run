@@ -32,18 +32,19 @@ func TestRunAndAggregate(t *testing.T) {
 		})
 
 		c.Run("StreamLines", func(c *qt.C) {
-			var lines [][]byte
+			linesC := make(chan []byte, 10)
 			err := run.Cmd(ctx, command).Run().StreamLines(func(line []byte) {
-				lines = append(lines, line)
+				linesC <- line
 			})
 			c.Assert(err, qt.IsNil)
+			close(linesC)
+
+			var lines [][]byte
+			for l := range linesC {
+				lines = append(lines, l)
+			}
 			c.Assert(len(lines), qt.Equals, 1)
 			c.Assert(string(lines[0]), qt.Equals, "hello world")
-		})
-
-		c.Run("Wait", func(c *qt.C) {
-			err := run.Cmd(ctx, command).Run().Wait()
-			c.Assert(err, qt.IsNil)
 		})
 
 		c.Run("Read", func(c *qt.C) {
@@ -52,6 +53,24 @@ func TestRunAndAggregate(t *testing.T) {
 			c.Assert(err, qt.IsNil)
 			c.Assert(string(b[0:n-1]), qt.Equals, "hello world\n")
 		})
+
+		c.Run("Wait", func(c *qt.C) {
+			err := run.Cmd(ctx, command).Run().Wait()
+			c.Assert(err, qt.IsNil)
+		})
+	})
+
+	c.Run("cat and JQ", func(c *qt.C) {
+		const testJSON = `{
+			"hello": "world"		
+		}`
+
+		res, err := run.Cmd(ctx, "cat").
+			Input(strings.NewReader(testJSON)).
+			Run().
+			JQ(".hello")
+		c.Assert(err, qt.IsNil)
+		c.Assert(string(res), qt.Equals, `"world"`)
 	})
 }
 
@@ -67,7 +86,7 @@ func TestInput(t *testing.T) {
 
 		lines, err := cmd.Run().Lines()
 		c.Assert(err, qt.IsNil)
-		c.Assert(lines[0], qt.Equals, "hello world")
+		c.Assert(lines, qt.CmpEquals(), []string{"hello world"})
 	})
 
 	c.Run("reset input", func(c *qt.C) {
@@ -78,6 +97,6 @@ func TestInput(t *testing.T) {
 
 		lines, err := cmd.Run().Lines()
 		c.Assert(err, qt.IsNil)
-		c.Assert(lines[0], qt.Equals, "world")
+		c.Assert(lines, qt.CmpEquals(), []string{"world"})
 	})
 }

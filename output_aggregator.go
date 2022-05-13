@@ -30,26 +30,61 @@ type aggregator struct {
 func (a *aggregator) Stream(dst io.Writer) error {
 	if len(a.filterFuncs) == 0 {
 		// Happy path, directly pipe output
-		go io.Copy(dst, a.reader)
-		return a.Wait()
+		doneC := make(chan struct{})
+		go func() {
+			io.Copy(dst, a.reader)
+			doneC <- struct{}{}
+		}()
+		errC := make(chan error)
+		go func() {
+			errC <- a.Wait()
+		}()
+		<-doneC
+		return <-errC
 	}
 
 	// Pipe output via the filtered line pipe
-	go a.filteredLinePipe(func(l []byte) { dst.Write(append(l, byte('\n'))) })
+	go a.filteredLinePipe(func(l []byte) { dst.Write(append(l, byte('\n'))) }, nil)
 	return a.Wait()
 }
 
 func (a *aggregator) StreamLines(dst func(line []byte)) error {
-	go a.filteredLinePipe(dst)
-	return a.Wait()
+	doneC := make(chan struct{}, 1)
+	go func() {
+		a.filteredLinePipe(dst, nil)
+		doneC <- struct{}{}
+	}()
+	errC := make(chan error, 1)
+	go func() {
+		errC <- a.Wait()
+	}()
+	<-doneC
+	return <-errC
 }
 
 func (a *aggregator) Lines() ([]string, error) {
-	lines := make([]string, 0, 10)
+	// export lines
+	linesC := make(chan string, 3)
 	go a.filteredLinePipe(func(line []byte) {
-		lines = append(lines, string(line))
-	})
-	return lines, a.Wait()
+		linesC <- string(line)
+	}, func() { close(linesC) })
+
+	// aggregate lines
+	resultsC := make(chan []string, 1)
+	defer close(resultsC)
+	go func() {
+		lines := make([]string, 0, 10)
+		for line := range linesC {
+			lines = append(lines, line)
+		}
+		resultsC <- lines
+	}()
+
+	// End command
+	err := a.Wait()
+
+	// Wait for results
+	return <-resultsC, err
 }
 
 func (a *aggregator) JQ(query string) ([]byte, error) {
@@ -98,7 +133,7 @@ func (a *aggregator) Wait() error {
 	return newError(a.waitFunc())
 }
 
-func (a *aggregator) filteredLinePipe(send func([]byte)) {
+func (a *aggregator) filteredLinePipe(send func([]byte), close func()) {
 	scanner := bufio.NewScanner(a.reader)
 
 	// TODO should we introduce API for configuring max capacity?
@@ -121,5 +156,9 @@ func (a *aggregator) filteredLinePipe(send func([]byte)) {
 		if !skip {
 			send(line)
 		}
+	}
+
+	if close != nil {
+		close()
 	}
 }
