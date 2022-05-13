@@ -32,11 +32,17 @@ func TestRunAndAggregate(t *testing.T) {
 		})
 
 		c.Run("StreamLines", func(c *qt.C) {
-			var lines [][]byte
+			linesC := make(chan []byte, 10)
 			err := run.Cmd(ctx, command).Run().StreamLines(func(line []byte) {
-				lines = append(lines, line)
+				linesC <- line
 			})
 			c.Assert(err, qt.IsNil)
+			close(linesC)
+
+			var lines [][]byte
+			for l := range linesC {
+				lines = append(lines, l)
+			}
 			c.Assert(len(lines), qt.Equals, 1)
 			c.Assert(string(lines[0]), qt.Equals, "hello world")
 		})
