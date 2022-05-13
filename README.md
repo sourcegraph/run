@@ -1,5 +1,7 @@
 # 🏃‍♂️ run
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/sourcegraph/run.svg)](https://pkg.go.dev/github.com/sourcegraph/run) ![Tests](https://github.com/sourcegraph/run/actions/workflows/pipeline.yml/badge.svg?branch=main)
+
 A new way to execute commands in Go
 
 ## Example usage
