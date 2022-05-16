@@ -18,7 +18,7 @@ func main() {
 	if err := cmd.Run().
 		Filter(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
 			if bytes.Contains(line, []byte("loop 3")) {
-				defer cancel()
+				defer cancel() // Interrupt parent context here
 
 				written, err := run.Cmd(ctx, "echo", "Loop 3 detected, running a subcommand!").
 					Run().
