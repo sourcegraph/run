@@ -44,6 +44,8 @@ type Output interface {
 	// Reader is implemented so that Output can be provided directly to another Command
 	// using Input().
 	io.Reader
+	// WriterTo is implemented for convenience when chaining commands in LineFilter.
+	io.WriterTo
 
 	// Wait waits for command completion and returns.
 	Wait() error

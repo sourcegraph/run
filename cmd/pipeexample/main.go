@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log"
 	"os"
 
@@ -13,8 +14,8 @@ func main() {
 
 	// Run command and get Output
 	lsOut := run.Cmd(ctx, "ls cmd").Run().
-		Filter(func(line []byte) ([]byte, bool) {
-			return append([]byte("./cmd/"), line...), false
+		Filter(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
+			return dst.Write(append([]byte("./cmd/"), line...))
 		})
 
 	// Pipe Output directly to another command!

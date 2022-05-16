@@ -1,12 +1,16 @@
 package run
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
-// LineFilter allows modifications of individual lines from Output.
+// LineFilter allows modifications of individual lines from Output and enables callbacks
+// that operate on lines from Output.
 //
-// An explicit "skip" return parameter is required because many bytes library functions
-// return nil to denote empty lines, which should be preserved: https://github.com/golang/go/issues/46415
-type LineFilter func(line []byte) (newLine []byte, skip bool)
+// The return value mirrors the signature of (Writer).Write(), and should be used to
+// indicate what was written to dst.
+type LineFilter func(ctx context.Context, line []byte, dst io.Writer) (int, error)
 
 // JQFilter creates a LineFilter that executes a JQ query against each line. Errors at
 // runtime get written to output.
@@ -18,11 +22,11 @@ func JQFilter(query string) (LineFilter, error) {
 		return nil, err
 	}
 
-	return func(line []byte) ([]byte, bool) {
-		b, err := execJQ(context.TODO(), jqCode, line)
+	return func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
+		b, err := execJQ(ctx, jqCode, line)
 		if err != nil {
-			return []byte(err.Error()), false
+			return 0, err
 		}
-		return b, false
+		return dst.Write(b)
 	}, nil
 }

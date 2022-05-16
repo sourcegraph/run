@@ -18,5 +18,6 @@ func (o *errorOutput) StreamLines(dst func(line []byte)) error { return o.err }
 func (o *errorOutput) Lines() ([]string, error)                { return nil, o.err }
 func (o *errorOutput) JQ(query string) ([]byte, error)         { return nil, o.err }
 func (o *errorOutput) Read(p []byte) (int, error)              { return 0, o.err }
+func (o *errorOutput) WriteTo(io.Writer) (int64, error)        { return 0, o.err }
 
 func (o *errorOutput) Wait() error { return o.err }
