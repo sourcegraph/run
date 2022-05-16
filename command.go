@@ -35,6 +35,11 @@ func Cmd(ctx context.Context, parts ...string) *Command {
 	}
 }
 
+// Bash joins all the parts and builds a command from it to be run by 'bash -c'.
+func Bash(ctx context.Context, parts ...string) *Command {
+	return Cmd(ctx, "bash -c", shell.Quote(strings.Join(parts, " ")))
+}
+
 // Run starts command execution and returns Output, which defaults to combined output.
 func (c *Command) Run() Output {
 	if c.buildError != nil {
