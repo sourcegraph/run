@@ -31,7 +31,7 @@ func main() {
     log.Fatal(err.Error())
   }
 
-  // Or collect filter and modify standard out, then collect string lines from it
+  // Or collect, map, and modify output, then collect string lines from it
   lines, err := run.Cmd(ctx, "ls").Run().
     Map(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
       if !bytes.HasSuffix(line, []byte(".go")) {

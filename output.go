@@ -31,13 +31,13 @@ type Output interface {
 	// TODO wishlist functionality
 	// Mode(mode OutputMode) Output
 
-	// Stream writes filtered output from the command to the destination writer until
+	// Stream writes mapped output from the command to the destination writer until
 	// command completion.
 	Stream(dst io.Writer) error
-	// StreamLines writes filtered output from the command and sends it line by line to the
+	// StreamLines writes mapped output from the command and sends it line by line to the
 	// destination callback until command completion.
 	StreamLines(dst func(line []byte)) error
-	// Lines waits for command completion and aggregates filtered output from the command.
+	// Lines waits for command completion and aggregates mapped output from the command.
 	Lines() ([]string, error)
 	// JQ waits for command completion executes a JQ query against the entire output.
 	//
@@ -46,7 +46,7 @@ type Output interface {
 	// Reader is implemented so that Output can be provided directly to another Command
 	// using Input().
 	io.Reader
-	// WriterTo is implemented for convenience when chaining commands in LineFilter.
+	// WriterTo is implemented for convenience when chaining commands in LineMap.
 	io.WriterTo
 
 	// Wait waits for command completion and returns.
