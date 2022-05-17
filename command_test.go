@@ -74,7 +74,7 @@ func TestRunAndAggregate(t *testing.T) {
 	})
 
 	c.Run("mixed output", func(c *qt.C) {
-		const mixedOutputCmd = `>&2 echo "stderr" ; echo "stdout"`
+		const mixedOutputCmd = `echo "stdout" ; sleep 0.001 ; >&2 echo "stderr"`
 
 		c.Run("stdout only", func(c *qt.C) {
 			res, err := run.Bash(ctx, mixedOutputCmd).
@@ -99,7 +99,7 @@ func TestRunAndAggregate(t *testing.T) {
 				Run().
 				Lines()
 			c.Assert(err, qt.IsNil)
-			c.Assert(res, qt.CmpEquals(), []string{"stderr", "stdout"})
+			c.Assert(res, qt.CmpEquals(), []string{"stdout", "stderr"})
 		})
 	})
 }
