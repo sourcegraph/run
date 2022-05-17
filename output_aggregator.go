@@ -13,12 +13,12 @@ import (
 type aggregator struct {
 	ctx context.Context
 
-	// reader is set to one of stdErr, stdOut, or both. It does not have filterFuncs
+	// reader is set to one of stdErr, stdOut, or both. It does not have mapFuncs
 	// applied, they are applied at aggregation time.
 	reader io.Reader
 
-	// filterFuncs define line filters to be applied at aggregation time.
-	filterFuncs []LineFilter
+	// mapFuncs define LineMaps to be applied at aggregation time.
+	mapFuncs []LineMap
 
 	// waitFunc is called before aggregation exit.
 	waitFunc func() (error, *bytes.Buffer)
@@ -33,22 +33,22 @@ func (a *aggregator) Stream(dst io.Writer) error {
 }
 
 func (a *aggregator) StreamLines(dst func(line []byte)) error {
-	filtersErrC := make(chan error, 1)
+	mapsErrC := make(chan error, 1)
 	go func() {
-		_, err := a.filteredLinePipe(newLineWriter(dst), nil)
-		filtersErrC <- err
+		_, err := a.mapedLinePipe(newLineWriter(dst), nil)
+		mapsErrC <- err
 	}()
 
 	// Wait for command to finish
 	err := a.Wait()
 
 	// Wait for aggregation to finish
-	filterErr := <-filtersErrC
+	mapErr := <-mapsErrC
 
 	if err != nil {
 		return err
 	}
-	return filterErr
+	return mapErr
 }
 
 func (a *aggregator) Lines() ([]string, error) {
@@ -58,11 +58,11 @@ func (a *aggregator) Lines() ([]string, error) {
 	closeResults := func() { close(linesC) }
 
 	// start collecting lines
-	filtersErrC := make(chan error, 1)
+	mapsErrC := make(chan error, 1)
 	go func() {
 		dst := newLineWriter(sendLine)
-		_, err := a.filteredLinePipe(dst, closeResults)
-		filtersErrC <- err
+		_, err := a.mapedLinePipe(dst, closeResults)
+		mapsErrC <- err
 	}()
 
 	// aggregate lines from results
@@ -85,7 +85,7 @@ func (a *aggregator) Lines() ([]string, error) {
 	if err != nil {
 		return results, err
 	}
-	return results, <-filtersErrC
+	return results, <-mapsErrC
 }
 
 func (a *aggregator) JQ(query string) ([]byte, error) {
@@ -129,7 +129,7 @@ func (a *aggregator) Read(read []byte) (int, error) {
 // WriteTo implements io.WriterTo, and returns int64 instead of int because of:
 // https://stackoverflow.com/questions/29658892/why-does-io-writertos-writeto-method-return-an-int64-rather-than-an-int
 func (a *aggregator) WriteTo(dst io.Writer) (int64, error) {
-	if len(a.filterFuncs) == 0 {
+	if len(a.mapFuncs) == 0 {
 		// Happy path, directly pipe output
 		doneC := make(chan int64)
 		go func() {
@@ -143,25 +143,25 @@ func (a *aggregator) WriteTo(dst io.Writer) (int64, error) {
 		return <-doneC, <-errC
 	}
 
-	// Pipe output via the filtered line pipe
-	filterErrC := make(chan error, 1)
+	// Pipe output via the maped line pipe
+	mapErrC := make(chan error, 1)
 	writtenC := make(chan int64, 1)
 	go func() {
-		written, err := a.filteredLinePipe(dst, nil)
+		written, err := a.mapedLinePipe(dst, nil)
 		writtenC <- written
-		filterErrC <- err
+		mapErrC <- err
 	}()
 
 	// Wait for command to finish
 	err := a.Wait()
 
 	// Wait for results
-	filterErr := <-filterErrC
+	mapErr := <-mapErrC
 
 	if err != nil {
 		return <-writtenC, err
 	}
-	return <-writtenC, filterErr
+	return <-writtenC, mapErr
 }
 
 func (a *aggregator) Wait() error {
@@ -172,7 +172,7 @@ func (a *aggregator) Wait() error {
 	return newError(a.waitFunc())
 }
 
-func (a *aggregator) filteredLinePipe(dst io.Writer, close func()) (int64, error) {
+func (a *aggregator) mapedLinePipe(dst io.Writer, close func()) (int64, error) {
 	if close != nil {
 		defer close()
 	}
@@ -191,9 +191,9 @@ func (a *aggregator) filteredLinePipe(dst io.Writer, close func()) (int64, error
 		line := scanner.Bytes()
 		buffered := len(line)
 
-		for _, filter := range a.filterFuncs {
+		for _, f := range a.mapFuncs {
 			var err error
-			buffered, err = filter(a.ctx, line, &buf)
+			buffered, err = f(a.ctx, line, &buf)
 			if err != nil {
 				return totalWritten, err
 			}
@@ -203,7 +203,7 @@ func (a *aggregator) filteredLinePipe(dst io.Writer, close func()) (int64, error
 				break
 			}
 
-			// Copy bytes and reset for the next filter
+			// Copy bytes and reset for the next map
 			line = make([]byte, buf.Len())
 			copy(line, buf.Bytes())
 			buf.Reset()

@@ -22,9 +22,11 @@ type Output interface {
 	// StdErr configures this Output to only provide StdErr. By default, Output works with
 	// combined output.
 	StdErr() Output
-	// Filter adds a filter to this Output. It is only applied at aggregation time using
-	// e.g. Stream, Lines, and so on.
-	Filter(filter LineFilter) Output
+	// Map adds a LineMap function to be applied to this Output. It is only applied at
+	// aggregation time using e.g. Stream, Lines, and so on. Multiple LineMaps are applied
+	// sequentially, with the result of previous LineMaps propagated to subsequent
+	// LineMaps.
+	Map(f LineMap) Output
 
 	// TODO wishlist functionality
 	// Mode(mode OutputMode) Output
@@ -136,7 +138,7 @@ func (o *commandOutput) StdErr() Output {
 	return o
 }
 
-func (o *commandOutput) Filter(filter LineFilter) Output {
-	o.aggregator.filterFuncs = append(o.aggregator.filterFuncs, filter)
+func (o *commandOutput) Map(f LineMap) Output {
+	o.aggregator.mapFuncs = append(o.aggregator.mapFuncs, f)
 	return o
 }

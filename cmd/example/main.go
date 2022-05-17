@@ -22,7 +22,7 @@ func main() {
 
 	// Or collect filter and modify standard out, then collect string lines from it
 	lines, err := run.Cmd(ctx, "ls").Run().
-		Filter(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
+		Map(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
 			if !bytes.HasSuffix(line, []byte(".go")) {
 				return 0, nil
 			}
@@ -46,7 +46,7 @@ func main() {
 	var exampleData bytes.Buffer
 	exampleData.Write([]byte(exampleStart + "\n\n```go\n"))
 	if err = run.Cmd(ctx, "cat", "cmd/example/main.go").Run().
-		Filter(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
+		Map(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
 			return dst.Write(bytes.ReplaceAll(line, []byte("\t"), []byte("  ")))
 		}).
 		Stream(&exampleData); err != nil {

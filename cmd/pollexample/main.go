@@ -16,7 +16,7 @@ func main() {
 	// Demonstrate that output streams live!
 	cmd := run.Bash(ctx, `for i in {1..10}; do echo -n "This is a test in loop $i "; date ; sleep 1; done`)
 	if err := cmd.Run().
-		Filter(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
+		Map(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
 			if bytes.Contains(line, []byte("loop 3")) {
 				defer cancel() // Interrupt parent context here
 
