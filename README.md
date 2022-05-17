@@ -15,6 +15,7 @@ import (
   "bytes"
   "context"
   "fmt"
+  "io"
   "log"
   "os"
 
@@ -32,11 +33,11 @@ func main() {
 
   // Or collect filter and modify standard out, then collect string lines from it
   lines, err := run.Cmd(ctx, "ls").Run().
-    Filter(func(s []byte) ([]byte, bool) {
-      if !bytes.HasSuffix(s, []byte(".go")) {
-        return nil, true
+    Map(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
+      if !bytes.HasSuffix(line, []byte(".go")) {
+        return 0, nil
       }
-      return bytes.TrimSuffix(s, []byte(".go")), false
+      return dst.Write(bytes.TrimSuffix(line, []byte(".go")))
     }).
     Lines()
   if err != nil {
@@ -56,8 +57,8 @@ func main() {
   var exampleData bytes.Buffer
   exampleData.Write([]byte(exampleStart + "\n\n```go\n"))
   if err = run.Cmd(ctx, "cat", "cmd/example/main.go").Run().
-    Filter(func(line []byte) ([]byte, bool) {
-      return bytes.ReplaceAll(line, []byte("\t"), []byte("  ")), false
+    Map(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
+      return dst.Write(bytes.ReplaceAll(line, []byte("\t"), []byte("  ")))
     }).
     Stream(&exampleData); err != nil {
     log.Fatal(err)

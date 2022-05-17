@@ -24,3 +24,15 @@ func (lw *lineWriter) Write(b []byte) (int, error) {
 
 	return n, nil
 }
+
+type tracedBuffer struct {
+	// writeCalled indicates that Write was called at all, even with empty input.
+	writeCalled bool
+
+	*bytes.Buffer
+}
+
+func (t *tracedBuffer) Write(b []byte) (int, error) {
+	t.writeCalled = true
+	return t.Buffer.Write(b)
+}

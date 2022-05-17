@@ -33,9 +33,9 @@ func (a *aggregator) Stream(dst io.Writer) error {
 }
 
 func (a *aggregator) StreamLines(dst func(line []byte)) error {
-	mapsErrC := make(chan error, 1)
+	mapsErrC := make(chan error)
 	go func() {
-		_, err := a.mapedLinePipe(newLineWriter(dst), nil)
+		_, err := a.mappedLinePipe(newLineWriter(dst), nil)
 		mapsErrC <- err
 	}()
 
@@ -55,31 +55,32 @@ func (a *aggregator) Lines() ([]string, error) {
 	// export lines
 	linesC := make(chan string, 3)
 	sendLine := func(line []byte) { linesC <- string(line) }
-	closeResults := func() { close(linesC) }
+	closeLines := func() { close(linesC) }
 
 	// start collecting lines
-	mapsErrC := make(chan error, 1)
+	mapsErrC := make(chan error)
 	go func() {
 		dst := newLineWriter(sendLine)
-		_, err := a.mapedLinePipe(dst, closeResults)
+		_, err := a.mappedLinePipe(dst, closeLines)
 		mapsErrC <- err
 	}()
 
 	// aggregate lines from results
-	resultsC := make(chan []string, 1)
+	aggregatedC := make(chan []string)
 	go func() {
 		lines := make([]string, 0, 10)
 		for line := range linesC {
 			lines = append(lines, line)
 		}
-		resultsC <- lines
+		aggregatedC <- lines
 	}()
 
 	// wait for command to finish
 	err := a.Wait()
 
 	// Wait for results
-	results := <-resultsC
+	results := <-aggregatedC
+	println("results")
 
 	// done
 	if err != nil {
@@ -144,12 +145,12 @@ func (a *aggregator) WriteTo(dst io.Writer) (int64, error) {
 	}
 
 	// Pipe output via the maped line pipe
-	mapErrC := make(chan error, 1)
-	writtenC := make(chan int64, 1)
+	mapErrC := make(chan error)
+	writtenC := make(chan int64)
 	go func() {
-		written, err := a.mapedLinePipe(dst, nil)
+		written, err := a.mappedLinePipe(dst, nil)
+		mapErrC <- err // send err first because we receive this first later
 		writtenC <- written
-		mapErrC <- err
 	}()
 
 	// Wait for command to finish
@@ -172,7 +173,7 @@ func (a *aggregator) Wait() error {
 	return newError(a.waitFunc())
 }
 
-func (a *aggregator) mapedLinePipe(dst io.Writer, close func()) (int64, error) {
+func (a *aggregator) mappedLinePipe(dst io.Writer, close func()) (int64, error) {
 	if close != nil {
 		defer close()
 	}
@@ -189,16 +190,17 @@ func (a *aggregator) mapedLinePipe(dst io.Writer, close func()) (int64, error) {
 	var totalWritten int64
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		buffered := len(line)
 
+		var writeCalled bool
 		for _, f := range a.mapFuncs {
-			var err error
-			buffered, err = f(a.ctx, line, &buf)
+			tb := &tracedBuffer{Buffer: &buf}
+			buffered, err := f(a.ctx, line, tb)
 			if err != nil {
 				return totalWritten, err
 			}
+			writeCalled = tb.writeCalled
 
-			// No lines == skip
+			// Nothing written => end
 			if buffered == 0 {
 				break
 			}
@@ -209,9 +211,10 @@ func (a *aggregator) mapedLinePipe(dst io.Writer, close func()) (int64, error) {
 			buf.Reset()
 		}
 
-		// If anything was written, treat it as a line and add a line ending for
-		// convenience, unless it already has a line ending.
-		if buffered > 0 && !bytes.HasSuffix(line, []byte("\n")) {
+		// If anything was written, or a write was called even with an ending, treat it as
+		// a line and add a line ending for convenience, unless it already has a line
+		// ending.
+		if writeCalled && !bytes.HasSuffix(line, []byte("\n")) {
 			written, err := dst.Write(append(line, '\n'))
 			totalWritten += int64(written)
 			if err != nil {
