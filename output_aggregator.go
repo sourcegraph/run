@@ -67,7 +67,6 @@ func (a *aggregator) Lines() ([]string, error) {
 
 	// aggregate lines from results
 	resultsC := make(chan []string, 1)
-	defer close(resultsC)
 	go func() {
 		lines := make([]string, 0, 10)
 		for line := range linesC {

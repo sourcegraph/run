@@ -64,23 +64,34 @@ type commandOutput struct {
 
 var _ Output = &commandOutput{}
 
-const maxBufferSize = 128 * 1024
+var maxBufferSize int64 = 128 * 1024
 
 func attachOutputAndRun(ctx context.Context, cmd *exec.Cmd) Output {
 	closers := make([]io.Closer, 0, 3*2)
 
-	combinedReader, combinedWriter := nio.Pipe(buffer.New(maxBufferSize))
+	// Use unbounded buffers that create files of size fileBuffersSize to store overflow.
+	//
+	// TODO: We might be able to use ring buffers here to recycle memory, but it doesn't
+	// seem to work with large inputs out of the box - data can end up truncated before
+	// reads complete.
+	fileBuffersSize := maxBufferSize / int64(4)
+	combinedBuffer := buffer.NewUnboundedBuffer(maxBufferSize, fileBuffersSize)
+	stdoutBuffer := buffer.NewUnboundedBuffer(maxBufferSize, fileBuffersSize)
+	stderrBuffer := buffer.NewUnboundedBuffer(maxBufferSize, fileBuffersSize)
+
+	// Pipe for combined output
+	combinedReader, combinedWriter := nio.Pipe(combinedBuffer)
 	closers = append(closers, combinedReader, combinedWriter)
 
 	// Pipe stdout
-	stdoutReader, stdoutWriter := nio.Pipe(buffer.New(maxBufferSize))
+	stdoutReader, stdoutWriter := nio.Pipe(stdoutBuffer)
 	closers = append(closers, stdoutReader, stdoutWriter)
 	cmd.Stdout = io.MultiWriter(stdoutWriter, combinedWriter)
 
 	// Pipe stderr. We use a custom pipe because cmd.StderrPipe seems to have side effects
-	// that breaks io.MultiError, which we need to retain a copy of stderr for error
+	// that breaks io.MultiWriter, which we need to retain a copy of stderr for error
 	// creation.
-	stderrReader, stderrWriter := nio.Pipe(buffer.New(maxBufferSize))
+	stderrReader, stderrWriter := nio.Pipe(stderrBuffer)
 	closers = append(closers, stderrReader, stderrWriter)
 	var stderrCopy bytes.Buffer
 	cmd.Stderr = io.MultiWriter(&stderrCopy, stderrWriter, combinedWriter)
@@ -103,9 +114,12 @@ func attachOutputAndRun(ctx context.Context, cmd *exec.Cmd) Output {
 			// Define cleanup for command
 			waitFunc: func() (error, *bytes.Buffer) {
 				cmdErr := cmd.Wait()
+
+				// Stop all read/write operations
 				for _, closer := range closers {
 					closer.Close()
 				}
+
 				return cmdErr, &stderrCopy
 			},
 		},
