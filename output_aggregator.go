@@ -29,16 +29,19 @@ type aggregator struct {
 
 func (a *aggregator) Stream(dst io.Writer) error {
 	if len(a.filterFuncs) == 0 {
-		// Happy path, directly pipe output
-		doneC := make(chan struct{})
+		// Happy path, directly copy output
+		doneC := make(chan struct{}, 1)
 		go func() {
 			io.Copy(dst, a.reader)
 			doneC <- struct{}{}
 		}()
-		errC := make(chan error)
+
+		// Start waiting for command to finish
+		errC := make(chan error, 1)
 		go func() {
 			errC <- a.Wait()
 		}()
+
 		<-doneC
 		return <-errC
 	}
@@ -49,15 +52,19 @@ func (a *aggregator) Stream(dst io.Writer) error {
 }
 
 func (a *aggregator) StreamLines(dst func(line []byte)) error {
+	// Wait for stream to finish
 	doneC := make(chan struct{}, 1)
 	go func() {
 		a.filteredLinePipe(dst, nil)
 		doneC <- struct{}{}
 	}()
+
+	// Start waiting for command to finish
 	errC := make(chan error, 1)
 	go func() {
 		errC <- a.Wait()
 	}()
+
 	<-doneC
 	return <-errC
 }
@@ -71,7 +78,6 @@ func (a *aggregator) Lines() ([]string, error) {
 
 	// aggregate lines
 	resultsC := make(chan []string, 1)
-	defer close(resultsC)
 	go func() {
 		lines := make([]string, 0, 10)
 		for line := range linesC {
