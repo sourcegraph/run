@@ -72,6 +72,36 @@ func TestRunAndAggregate(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 		c.Assert(string(res), qt.Equals, `"world"`)
 	})
+
+	c.Run("mixed output", func(c *qt.C) {
+		const mixedOutputCmd = `>&2 echo "stderr" ; echo "stdout"`
+
+		c.Run("stdout only", func(c *qt.C) {
+			res, err := run.Bash(ctx, mixedOutputCmd).
+				Run().
+				StdOut().
+				Lines()
+			c.Assert(err, qt.IsNil)
+			c.Assert(res, qt.CmpEquals(), []string{"stdout"})
+		})
+
+		c.Run("stderr only", func(c *qt.C) {
+			res, err := run.Bash(ctx, mixedOutputCmd).
+				Run().
+				StdErr().
+				Lines()
+			c.Assert(err, qt.IsNil)
+			c.Assert(res, qt.CmpEquals(), []string{"stderr"})
+		})
+
+		c.Run("combined", func(c *qt.C) {
+			res, err := run.Bash(ctx, mixedOutputCmd).
+				Run().
+				Lines()
+			c.Assert(err, qt.IsNil)
+			c.Assert(res, qt.CmpEquals(), []string{"stderr", "stdout"})
+		})
+	})
 }
 
 func TestInput(t *testing.T) {
