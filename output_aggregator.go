@@ -211,8 +211,8 @@ func (a *aggregator) filteredLinePipe(dst io.Writer, close func()) (int64, error
 		}
 
 		// If anything was written, treat it as a line and add a line ending for
-		// convenience.
-		if buffered > 0 {
+		// convenience, unless it already has a line ending.
+		if buffered > 0 && !bytes.HasSuffix(line, []byte("\n")) {
 			written, err := dst.Write(append(line, '\n'))
 			totalWritten += int64(written)
 			if err != nil {
