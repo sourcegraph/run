@@ -80,7 +80,6 @@ func (a *aggregator) Lines() ([]string, error) {
 
 	// Wait for results
 	results := <-aggregatedC
-	println("results")
 
 	// done
 	if err != nil {
@@ -191,7 +190,10 @@ func (a *aggregator) mappedLinePipe(dst io.Writer, close func()) (int64, error) 
 	for scanner.Scan() {
 		line := scanner.Bytes()
 
-		var writeCalled bool
+		// Defaults to true because if no map funcs unset this, then we will write the
+		// entire line.
+		writeCalled := true
+
 		for _, f := range a.mapFuncs {
 			tb := &tracedBuffer{Buffer: &buf}
 			buffered, err := f(a.ctx, line, tb)
