@@ -3,6 +3,7 @@ package run_test
 import (
 	"bytes"
 	"context"
+	"io"
 	"strings"
 	"testing"
 
@@ -71,6 +72,33 @@ func TestRunAndAggregate(t *testing.T) {
 			JQ(".hello")
 		c.Assert(err, qt.IsNil)
 		c.Assert(string(res), qt.Equals, `"world"`)
+	})
+
+	c.Run("empty lines from map are preserved", func(c *qt.C) {
+		const testData = `hello
+		
+		world`
+
+		c.Run("without map", func(c *qt.C) {
+			res, err := run.Cmd(ctx, "cat").
+				Input(strings.NewReader(testData)).
+				Run().
+				Lines()
+			c.Assert(err, qt.IsNil)
+			c.Assert(len(res), qt.Equals, 3)
+		})
+
+		c.Run("with map", func(c *qt.C) {
+			res, err := run.Cmd(ctx, "cat").
+				Input(strings.NewReader(testData)).
+				Run().
+				Map(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
+					return dst.Write(line)
+				}).
+				Lines()
+			c.Assert(err, qt.IsNil)
+			c.Assert(len(res), qt.Equals, 3)
+		})
 	})
 }
 
