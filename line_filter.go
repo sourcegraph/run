@@ -6,7 +6,8 @@ import (
 )
 
 // LineFilter allows modifications of individual lines from Output and enables callbacks
-// that operate on lines from Output.
+// that operate on lines from Output. Bytes written to dst are collected and passed to
+// subsequent LineFilters before being written to output aggregation, e.g. Output.Stream().
 //
 // The return value mirrors the signature of (Writer).Write(), and should be used to
 // indicate what was written to dst.
