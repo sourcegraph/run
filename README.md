@@ -1,6 +1,6 @@
 # 🏃‍♂️ run
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/sourcegraph/run.svg)](https://pkg.go.dev/github.com/sourcegraph/run) ![Tests](https://github.com/sourcegraph/run/actions/workflows/pipeline.yml/badge.svg?branch=main)
+[![Go Reference](https://pkg.go.dev/badge/github.com/sourcegraph/run.svg)](https://pkg.go.dev/github.com/sourcegraph/run) ![Tests](https://github.com/sourcegraph/run/actions/workflows/pipeline.yml/badge.svg?branch=main) [![Coverage](https://codecov.io/gh/sourcegraph/run/branch/main/graph/badge.svg?token=6ELDASP2U4)](https://codecov.io/gh/sourcegraph/run)
 
 A new way to execute commands in Go
 
