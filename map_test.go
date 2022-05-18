@@ -9,7 +9,7 @@ import (
 	"github.com/sourcegraph/run"
 )
 
-func TestJQFilter(t *testing.T) {
+func TestJQMap(t *testing.T) {
 	c := qt.New(t)
 	ctx := context.Background()
 
@@ -18,13 +18,13 @@ func TestJQFilter(t *testing.T) {
 {"msg":"hi robert!"}
 `
 
-	filter, err := run.JQFilter(".msg")
+	jqMap, err := run.MapJQ(".msg")
 	c.Assert(err, qt.IsNil)
 
 	lines, err := run.Cmd(ctx, "cat").
 		Input(strings.NewReader(jsonLines)).
 		Run().
-		Filter(filter).
+		Map(jqMap).
 		Lines()
 	c.Assert(err, qt.IsNil)
 	c.Assert(lines, qt.CmpEquals(), []string{

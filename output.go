@@ -22,20 +22,22 @@ type Output interface {
 	// StdErr configures this Output to only provide StdErr. By default, Output works with
 	// combined output.
 	StdErr() Output
-	// Filter adds a filter to this Output. It is only applied at aggregation time using
-	// e.g. Stream, Lines, and so on.
-	Filter(filter LineFilter) Output
+	// Map adds a LineMap function to be applied to this Output. It is only applied at
+	// aggregation time using e.g. Stream, Lines, and so on. Multiple LineMaps are applied
+	// sequentially, with the result of previous LineMaps propagated to subsequent
+	// LineMaps.
+	Map(f LineMap) Output
 
 	// TODO wishlist functionality
 	// Mode(mode OutputMode) Output
 
-	// Stream writes filtered output from the command to the destination writer until
+	// Stream writes mapped output from the command to the destination writer until
 	// command completion.
 	Stream(dst io.Writer) error
-	// StreamLines writes filtered output from the command and sends it line by line to the
+	// StreamLines writes mapped output from the command and sends it line by line to the
 	// destination callback until command completion.
 	StreamLines(dst func(line []byte)) error
-	// Lines waits for command completion and aggregates filtered output from the command.
+	// Lines waits for command completion and aggregates mapped output from the command.
 	Lines() ([]string, error)
 	// JQ waits for command completion executes a JQ query against the entire output.
 	//
@@ -44,6 +46,8 @@ type Output interface {
 	// Reader is implemented so that Output can be provided directly to another Command
 	// using Input().
 	io.Reader
+	// WriterTo is implemented for convenience when chaining commands in LineMap.
+	io.WriterTo
 
 	// Wait waits for command completion and returns.
 	Wait() error
@@ -134,7 +138,7 @@ func (o *commandOutput) StdErr() Output {
 	return o
 }
 
-func (o *commandOutput) Filter(filter LineFilter) Output {
-	o.aggregator.filterFuncs = append(o.aggregator.filterFuncs, filter)
+func (o *commandOutput) Map(f LineMap) Output {
+	o.aggregator.mapFuncs = append(o.aggregator.mapFuncs, f)
 	return o
 }
