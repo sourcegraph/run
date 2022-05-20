@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 
 	"github.com/djherbis/buffer"
 	"github.com/djherbis/nio/v3"
@@ -34,8 +35,12 @@ type Output interface {
 	// StreamLines writes mapped output from the command and sends it line by line to the
 	// destination callback until command completion.
 	StreamLines(dst func(line []byte)) error
-	// Lines waits for command completion and aggregates mapped output from the command.
+	// Lines waits for command completion and aggregates mapped output from the command as
+	// a slice of lines.
 	Lines() ([]string, error)
+	// Lines waits for command completion and aggregates mapped output from the command as
+	// a combined string.
+	String() (string, error)
 	// JQ waits for command completion executes a JQ query against the entire output.
 	//
 	// Refer to https://github.com/itchyny/gojq for the specifics of supported syntax.
@@ -225,6 +230,12 @@ func (o *commandOutput) JQ(query string) ([]byte, error) {
 		return nil, err
 	}
 	return b, nil
+}
+
+func (o *commandOutput) String() (string, error) {
+	var sb strings.Builder
+	err := o.Stream(&sb)
+	return strings.TrimSuffix(sb.String(), "\n"), err
 }
 
 func (o *commandOutput) Read(read []byte) (int, error) {
