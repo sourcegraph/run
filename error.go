@@ -23,13 +23,10 @@ func newError(err error, stdErr io.Reader) error {
 	if errors.As(err, &exitErr) {
 		if stdErr != nil {
 			// Not assigned by default using cmd.Start(), so we consume our copy of stderr
-			// and set it here.
-			b, err := io.ReadAll(stdErr)
-			if err != nil {
-				// Just return underlying error without stderr
-				return &runError{execErr: exitErr}
+			// and set it here. If an error occurs we just don't do anything with stderr.
+			if b, err := io.ReadAll(stdErr); err == nil {
+				exitErr.Stderr = bytes.TrimSpace(b)
 			}
-			exitErr.Stderr = bytes.TrimSpace(b)
 		}
 		return &runError{execErr: exitErr}
 	}
