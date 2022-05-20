@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 )
 
@@ -12,9 +13,8 @@ type runError struct{ execErr *exec.ExitError }
 
 var _ ExitCoder = &runError{}
 
-// newError creats a new *Error, and can be provided a nil error. If stdErrBuffer is not
-// nil, consumes and resets it.
-func newError(err error, stdErr *bytes.Buffer) error {
+// newError creats a new *Error, and can be provided a nil error and/or nil stdErr
+func newError(err error, stdErr io.Reader) error {
 	if err == nil {
 		return nil
 	}
@@ -23,9 +23,10 @@ func newError(err error, stdErr *bytes.Buffer) error {
 	if errors.As(err, &exitErr) {
 		if stdErr != nil {
 			// Not assigned by default using cmd.Start(), so we consume our copy of stderr
-			// and set it here.
-			exitErr.Stderr = bytes.TrimSpace(stdErr.Bytes())
-			stdErr.Reset()
+			// and set it here. If an error occurs we just don't do anything with stderr.
+			if b, err := io.ReadAll(stdErr); err == nil {
+				exitErr.Stderr = bytes.TrimSpace(b)
+			}
 		}
 		return &runError{execErr: exitErr}
 	}
