@@ -106,8 +106,8 @@ func TestRunAndAggregate(t *testing.T) {
 
 		c.Run("stdout only", func(c *qt.C) {
 			res, err := run.Bash(ctx, mixedOutputCmd).
-				Run().
 				StdOut().
+				Run().
 				Lines()
 			c.Assert(err, qt.IsNil)
 			c.Assert(res, qt.CmpEquals(), []string{"stdout"})
@@ -115,8 +115,8 @@ func TestRunAndAggregate(t *testing.T) {
 
 		c.Run("stderr only", func(c *qt.C) {
 			res, err := run.Bash(ctx, mixedOutputCmd).
-				Run().
 				StdErr().
+				Run().
 				Lines()
 			c.Assert(err, qt.IsNil)
 			c.Assert(res, qt.CmpEquals(), []string{"stderr"})

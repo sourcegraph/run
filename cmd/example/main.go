@@ -37,7 +37,7 @@ func main() {
 	}
 
 	// Errors include standard error by default, so we can just stream stdout.
-	err = run.Cmd(ctx, "ls", "foobar").Run().StdOut().Stream(os.Stdout)
+	err = run.Cmd(ctx, "ls", "foobar").StdOut().Run().Stream(os.Stdout)
 	if err != nil {
 		println(err.Error()) // exit status 1: ls: foobar: No such file or directory
 	}
