@@ -64,12 +64,12 @@ type commandOutput struct {
 
 	// reader is set to one of stdErr, stdOut, or both. It does not have mapFuncs
 	// applied, they are applied at aggregation time.
-	reader io.Reader
+	reader io.ReadCloser
 
 	// mapFuncs define LineMaps to be applied at aggregation time.
 	mapFuncs []LineMap
 
-	// waitFunc is called before aggregation exit.
+	// waitFunc is called before aggregation exit. It should only be called via doWaitOnce().
 	waitFunc func() error
 	waitOnce sync.Once
 }
@@ -222,7 +222,9 @@ func (o *commandOutput) WriteTo(dst io.Writer) (int64, error) {
 }
 
 func (o *commandOutput) Wait() error {
-	return o.doWaitOnce()
+	err := o.doWaitOnce()
+	o.reader.Close()
+	return err
 }
 
 // goWaitOnce waits for command completion. Most callers do not need to use the returned
