@@ -18,13 +18,6 @@ func TestRunAndAggregate(t *testing.T) {
 
 	command := `echo "hello world"`
 	c.Run(command, func(c *qt.C) {
-		c.Run("Lines", func(c *qt.C) {
-			lines, err := run.Cmd(ctx, command).Run().Lines()
-			c.Assert(err, qt.IsNil)
-			c.Assert(len(lines), qt.Equals, 1)
-			c.Assert(lines[0], qt.Equals, "hello world")
-		})
-
 		c.Run("Stream", func(c *qt.C) {
 			var b bytes.Buffer
 			err := run.Cmd(ctx, command).Run().Stream(&b)
@@ -46,6 +39,19 @@ func TestRunAndAggregate(t *testing.T) {
 			}
 			c.Assert(len(lines), qt.Equals, 1)
 			c.Assert(string(lines[0]), qt.Equals, "hello world")
+		})
+
+		c.Run("Lines", func(c *qt.C) {
+			lines, err := run.Cmd(ctx, command).Run().Lines()
+			c.Assert(err, qt.IsNil)
+			c.Assert(len(lines), qt.Equals, 1)
+			c.Assert(lines[0], qt.Equals, "hello world")
+		})
+
+		c.Run("String", func(c *qt.C) {
+			str, err := run.Cmd(ctx, command).Run().String()
+			c.Assert(err, qt.IsNil)
+			c.Assert(str, qt.Equals, "hello world")
 		})
 
 		c.Run("Read", func(c *qt.C) {
