@@ -97,15 +97,15 @@ func (c *Command) Environ(environ []string) *Command {
 	return c
 }
 
-// StdOut configures the command Output to only provide StdErr. By default, Output works
-// with combined output.
+// StdOut configures the command Output to only provide StdOut. By default, Output
+// includes combined output.
 func (c *Command) StdOut() *Command {
 	c.attach = attachOnlyStdOut
 	return c
 }
 
-// StdErr configures the command Output to only provide StdErr. By default, Output works
-// with combined output.
+// StdErr configures the command Output to only provide StdErr. By default, Output
+// includes combined output.
 func (c *Command) StdErr() *Command {
 	c.attach = attachOnlyStdErr
 	return c

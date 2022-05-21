@@ -62,9 +62,12 @@ type Output interface {
 type commandOutput struct {
 	ctx context.Context
 
-	// reader is set to one of stdErr, stdOut, or both. It does not have mapFuncs
+	// reader is set to the reader side of the output pipe. It does not have mapFuncs
 	// applied, they are applied at aggregation time.
 	reader io.ReadCloser
+	// writer is set to the writer side of the output pipe. It should be closed with the
+	// error from waitFunc().
+	writer closerWithError
 
 	// mapFuncs define LineMaps to be applied at aggregation time.
 	mapFuncs []LineMap
@@ -128,15 +131,10 @@ func attachOutputAndRun(ctx context.Context, attach attachedOuput, cmd *exec.Cmd
 	return &commandOutput{
 		ctx: ctx,
 
-		// Default to all output
 		reader: outputReader,
+		writer: outputWriter,
 
-		// Define cleanup for command
-		waitFunc: func() error {
-			err := newError(cmd.Wait(), stderrCopy)
-			outputWriter.CloseWithError(err)
-			return err
-		},
+		waitFunc: func() error { return newError(cmd.Wait(), stderrCopy) },
 	}
 }
 
@@ -223,6 +221,7 @@ func (o *commandOutput) WriteTo(dst io.Writer) (int64, error) {
 
 func (o *commandOutput) Wait() error {
 	err := o.doWaitOnce()
+	// Wait does not consume output, prevent further reads from occuring.
 	o.reader.Close()
 	return err
 }
@@ -235,6 +234,7 @@ func (o *commandOutput) doWaitOnce() error {
 	err := fmt.Errorf("output has already been consumed")
 	o.waitOnce.Do(func() {
 		err = o.waitFunc()
+		o.writer.CloseWithError(err)
 	})
 	return err
 }
