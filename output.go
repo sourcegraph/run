@@ -4,11 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/djherbis/buffer"
 	"github.com/djherbis/nio/v3"
@@ -62,18 +62,19 @@ type Output interface {
 type commandOutput struct {
 	ctx context.Context
 
-	// reader is set to one of stdErr, stdOut, or both. It does not have mapFuncs
-	// applied, they are applied at aggregation time.
-	reader io.Reader
+	// reader is set to the reader side of the output pipe. It does not have mapFuncs
+	// applied, they are applied at aggregation time. When the command exits, the error
+	// should be raised from the reader after the reader's buffer is exhausted.
+	reader io.ReadCloser
 
 	// mapFuncs define LineMaps to be applied at aggregation time.
 	mapFuncs []LineMap
 
-	// waitFunc is called before aggregation exit.
-	waitFunc func() (error, io.Reader)
-
-	// finalized is true if aggregator has already been consumed.
-	finalized bool
+	// waitAndCloseFunc should only be called via doWaitOnce(). It should wait for command
+	// exit and handle setting an error such that once reads from reader are complete, the
+	// reader should return the error from the command.
+	waitAndCloseFunc func() error
+	waitAndCloseOnce sync.Once
 }
 
 var _ Output = &commandOutput{}
@@ -90,37 +91,31 @@ const (
 
 func attachOutputAndRun(ctx context.Context, attach attachedOuput, cmd *exec.Cmd) Output {
 	// Use unbounded buffers that create files of size fileBuffersSize to store overflow.
-	//
-	// TODO: We might be able to use ring buffers here to recycle memory, but it doesn't
-	// seem to work with large inputs out of the box - data can end up truncated before
-	// reads complete.
 	fileBuffersSize := maxBufferSize / int64(4)
 	outputBuffer := buffer.NewUnboundedBuffer(maxBufferSize, fileBuffersSize)
+	// We need to retain a copy of stderr for error creation.
+	stderrCopy := buffer.NewUnboundedBuffer(maxBufferSize, fileBuffersSize)
+
+	// We use this buffered pipe from github.com/djherbis/nio that allows async read and
+	// write operations to the reader and writer portions of the pipe respectively.
 	outputReader, outputWriter := nio.Pipe(outputBuffer)
-	closers := []io.Closer{outputReader, outputWriter}
 
 	// Set up output hooks
 	switch attach {
 	case attachCombined:
 		cmd.Stdout = outputWriter
-		cmd.Stderr = outputWriter
+		cmd.Stderr = io.MultiWriter(stderrCopy, outputWriter)
 
 	case attachOnlyStdOut:
 		cmd.Stdout = outputWriter
+		cmd.Stderr = stderrCopy
 
 	case attachOnlyStdErr:
-		cmd.Stderr = outputWriter
+		cmd.Stdout = nil // discard
+		cmd.Stderr = io.MultiWriter(stderrCopy, outputWriter)
 
 	default:
 		return NewErrorOutput(fmt.Errorf("unexpected attach type %d", attach))
-	}
-
-	// We need to retain a copy of stderr for error creation.
-	stderrCopy := buffer.NewUnboundedBuffer(maxBufferSize, fileBuffersSize)
-	if cmd.Stderr != nil {
-		cmd.Stderr = io.MultiWriter(stderrCopy, cmd.Stderr)
-	} else {
-		cmd.Stderr = stderrCopy
 	}
 
 	// Start command execution
@@ -129,21 +124,14 @@ func attachOutputAndRun(ctx context.Context, attach attachedOuput, cmd *exec.Cmd
 	}
 
 	return &commandOutput{
-		ctx: ctx,
-
-		// Default to all output
+		ctx:    ctx,
 		reader: outputReader,
-
-		// Define cleanup for command
-		waitFunc: func() (error, io.Reader) {
-			cmdErr := cmd.Wait()
-
-			// Stop all read/write operations
-			for _, closer := range closers {
-				closer.Close()
-			}
-
-			return cmdErr, stderrCopy
+		waitAndCloseFunc: func() error {
+			err := newError(cmd.Wait(), stderrCopy)
+			// CloseWithError makes it so that when all output has been consumed from the
+			// reader, the given error is returned.
+			outputWriter.CloseWithError(err)
+			return err
 		},
 	}
 }
@@ -159,59 +147,31 @@ func (o *commandOutput) Stream(dst io.Writer) error {
 }
 
 func (o *commandOutput) StreamLines(dst func(line []byte)) error {
-	mapsErrC := make(chan error)
-	go func() {
-		_, err := o.mappedLinePipe(newLineWriter(dst), nil)
-		mapsErrC <- err
-	}()
+	go o.waitAndClose()
 
-	// Wait for command to finish
-	err := o.Wait()
-
-	// Wait for aggregation to finish
-	mapErr := <-mapsErrC
-
-	if err != nil {
-		return err
-	}
-	return mapErr
+	_, err := o.mappedLinePipe(newLineWriter(dst), nil)
+	return err
 }
 
 func (o *commandOutput) Lines() ([]string, error) {
+	go o.waitAndClose()
+
 	// export lines
 	linesC := make(chan string, 3)
-	sendLine := func(line []byte) { linesC <- string(line) }
-	closeLines := func() { close(linesC) }
-
-	// start collecting lines
-	mapsErrC := make(chan error)
+	errC := make(chan error)
 	go func() {
-		dst := newLineWriter(sendLine)
-		_, err := o.mappedLinePipe(dst, closeLines)
-		mapsErrC <- err
+		dst := newLineWriter(func(line []byte) { linesC <- string(line) })
+		_, err := o.mappedLinePipe(dst, func() { close(linesC) })
+		errC <- err
 	}()
 
 	// aggregate lines from results
-	aggregatedC := make(chan []string)
-	go func() {
-		lines := make([]string, 0, 10)
-		for line := range linesC {
-			lines = append(lines, line)
-		}
-		aggregatedC <- lines
-	}()
-
-	// wait for command to finish
-	err := o.Wait()
-
-	// Wait for results
-	results := <-aggregatedC
-
-	// done
-	if err != nil {
-		return results, err
+	lines := make([]string, 0, 10)
+	for line := range linesC {
+		lines = append(lines, line)
 	}
-	return results, <-mapsErrC
+
+	return lines, <-errC
 }
 
 func (o *commandOutput) JQ(query string) ([]byte, error) {
@@ -238,70 +198,43 @@ func (o *commandOutput) String() (string, error) {
 	return strings.TrimSuffix(sb.String(), "\n"), err
 }
 
-func (o *commandOutput) Read(read []byte) (int, error) {
-	if o.finalized {
-		return 0, io.EOF
-	}
+func (o *commandOutput) Read(p []byte) (int, error) {
+	go o.waitAndClose()
 
-	// Stream output to a buffer
-	buffer := bytes.NewBuffer(make([]byte, 0, len(read)))
-	err := o.Stream(buffer)
-	defer buffer.Reset()
-
-	// Populate data
-	for i, b := range buffer.Bytes() {
-		if i < len(read) {
-			read[i] = b
-		}
-	}
-
-	return buffer.Len() + 1, err
+	return o.reader.Read(p)
 }
 
 // WriteTo implements io.WriterTo, and returns int64 instead of int because of:
 // https://stackoverflow.com/questions/29658892/why-does-io-writertos-writeto-method-return-an-int64-rather-than-an-int
 func (o *commandOutput) WriteTo(dst io.Writer) (int64, error) {
+	go o.waitAndClose()
+
 	if len(o.mapFuncs) == 0 {
 		// Happy path, directly pipe output
-		doneC := make(chan int64)
-		go func() {
-			written, _ := io.Copy(dst, o.reader)
-			doneC <- written
-		}()
-		errC := make(chan error)
-		go func() {
-			errC <- o.Wait()
-		}()
-		return <-doneC, <-errC
+		return io.Copy(dst, o.reader)
 	}
 
-	// Pipe output via the maped line pipe
-	mapErrC := make(chan error)
-	writtenC := make(chan int64)
-	go func() {
-		written, err := o.mappedLinePipe(dst, nil)
-		mapErrC <- err // send err first because we receive this first later
-		writtenC <- written
-	}()
-
-	// Wait for command to finish
-	err := o.Wait()
-
-	// Wait for results
-	mapErr := <-mapErrC
-
-	if err != nil {
-		return <-writtenC, err
-	}
-	return <-writtenC, mapErr
+	return o.mappedLinePipe(dst, nil)
 }
 
 func (o *commandOutput) Wait() error {
-	if o.finalized {
-		return errors.New("output aggregator has already been finalized")
-	}
-	o.finalized = true
-	return newError(o.waitFunc())
+	err := o.waitAndClose()
+	// Wait does not consume output, so prevent further reads from occuring.
+	o.reader.Close()
+	return err
+}
+
+// goWaitOnce waits for command completion and closes the write half of the reader. Most
+// callers do not need to use the returned error - operations that read from o.reader
+// should return the error from that instead, which in most cases should be the same error.
+func (o *commandOutput) waitAndClose() error {
+	// If err is not reset by waitAndCloseOnce.Do, then output has already been consumed,
+	// and we raise this default error.
+	err := fmt.Errorf("output has already been consumed")
+	o.waitAndCloseOnce.Do(func() {
+		err = o.waitAndCloseFunc()
+	})
+	return err
 }
 
 func (o *commandOutput) mappedLinePipe(dst io.Writer, close func()) (int64, error) {
@@ -360,5 +293,5 @@ func (o *commandOutput) mappedLinePipe(dst io.Writer, close func()) (int64, erro
 		buf.Reset()
 	}
 
-	return totalWritten, nil
+	return totalWritten, scanner.Err()
 }

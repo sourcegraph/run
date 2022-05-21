@@ -55,10 +55,33 @@ func TestRunAndAggregate(t *testing.T) {
 		})
 
 		c.Run("Read", func(c *qt.C) {
-			b := make([]byte, 100)
-			n, err := run.Cmd(ctx, command).Run().Read(b)
-			c.Assert(err, qt.IsNil)
-			c.Assert(string(b[0:n-1]), qt.Equals, "hello world\n")
+			c.Run("fixed bytes read", func(c *qt.C) {
+				b := make([]byte, 100)
+				n, err := run.Cmd(ctx, command).Run().Read(b)
+				c.Assert(err, qt.IsNil)
+				c.Assert(string(b[0:n]), qt.Equals, "hello world\n")
+			})
+
+			c.Run("read exactly length of output", func(c *qt.C) {
+				// Read exactly the amount of output
+				out := "hello world\n"
+				b := make([]byte, len(out))
+				output := run.Cmd(ctx, command).Run()
+				n, err := output.Read(b)
+				c.Assert(err, qt.IsNil)
+				c.Assert(string(b[0:n]), qt.Equals, out)
+
+				// A subsequent read should indicate nothing read, and an EOF
+				n, err = output.Read(make([]byte, 100))
+				c.Assert(n, qt.Equals, 0)
+				c.Assert(err, qt.Equals, io.EOF)
+			})
+
+			c.Run("io.ReadAll", func(c *qt.C) {
+				b, err := io.ReadAll(run.Cmd(ctx, command).Run())
+				c.Assert(err, qt.IsNil)
+				c.Assert(string(b), qt.Equals, "hello world\n")
+			})
 		})
 
 		c.Run("Wait", func(c *qt.C) {
