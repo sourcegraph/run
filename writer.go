@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"io"
-
-	"github.com/djherbis/nio/v3"
 )
 
 type lineWriter struct {
@@ -38,10 +36,3 @@ func (t *tracedBuffer) Write(b []byte) (int, error) {
 	t.writeCalled = true
 	return t.Buffer.Write(b)
 }
-
-// closerWithError is part of the buffer pipe writer interface for closing the pipe.
-type closerWithError interface {
-	CloseWithError(error) error
-}
-
-var _ closerWithError = &nio.PipeWriter{}
