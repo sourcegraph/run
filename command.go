@@ -26,10 +26,12 @@ type Command struct {
 }
 
 // Cmd joins all the parts and builds a command from it.
+//
+// Arguments are not implicitly quoted - to quote arguemnts, you can use Arg.
 func Cmd(ctx context.Context, parts ...string) *Command {
 	args, ok := shell.Split(strings.Join(parts, " "))
 	if !ok {
-		return &Command{buildError: errors.New("provided args are invalid")}
+		return &Command{buildError: errors.New("provided parts has unclosed quotes")}
 	}
 
 	return &Command{
@@ -39,8 +41,10 @@ func Cmd(ctx context.Context, parts ...string) *Command {
 }
 
 // Bash joins all the parts and builds a command from it to be run by 'bash -c'.
+//
+// Arguments are not implicitly quoted - to quote arguemnts, you can use Arg.
 func Bash(ctx context.Context, parts ...string) *Command {
-	return Cmd(ctx, "bash -c", shell.Quote(strings.Join(parts, " ")))
+	return Cmd(ctx, "bash -c", Arg(strings.Join(parts, " ")))
 }
 
 // Run starts command execution and returns Output, which defaults to combined output.
