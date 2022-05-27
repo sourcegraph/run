@@ -180,22 +180,19 @@ func (o *commandOutput) JQ(query string) ([]byte, error) {
 		return nil, err
 	}
 
-	var buffer bytes.Buffer
-	if err := o.Stream(&buffer); err != nil {
-		return nil, err
-	}
-
-	b, err := execJQ(o.ctx, jqCode, buffer.Bytes())
+	result, err := execJQ(o.ctx, jqCode, o)
 	if err != nil {
 		return nil, err
 	}
-	return b, nil
+	return result, nil
 }
 
 func (o *commandOutput) String() (string, error) {
-	var sb strings.Builder
-	err := o.Stream(&sb)
-	return strings.TrimSuffix(sb.String(), "\n"), err
+	b, err := io.ReadAll(o)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(string(b), "\n"), nil
 }
 
 func (o *commandOutput) Read(p []byte) (int, error) {

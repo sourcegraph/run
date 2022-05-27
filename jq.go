@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"github.com/itchyny/gojq"
 )
@@ -22,18 +23,28 @@ func buildJQ(query string) (*gojq.Code, error) {
 	return jqCode, nil
 }
 
-// execJQ executes the compiled jq query against content.
-func execJQ(ctx context.Context, jqCode *gojq.Code, content []byte) ([]byte, error) {
+// execJQBytes can be used to execute a compiled jq query against small content bytes,
+// e.g. lines. Errors are annotated with the provided content for ease of debugging.
+func execJQBytes(ctx context.Context, jqCoode *gojq.Code, content []byte) ([]byte, error) {
 	if len(content) == 0 {
 		return nil, nil
 	}
+	result, err := execJQ(ctx, jqCoode, bytes.NewReader(content))
+	if err != nil {
+		// Embed the consumed content
+		return nil, fmt.Errorf("%w: %s", err, string(content))
+	}
+	return result, nil
+}
 
+// execJQ executes the compiled jq query against content from reader.
+func execJQ(ctx context.Context, jqCode *gojq.Code, reader io.Reader) ([]byte, error) {
 	var input interface{}
-	if err := json.NewDecoder(bytes.NewReader(content)).Decode(&input); err != nil {
-		return nil, fmt.Errorf("json: %w: %s", err, string(content))
+	if err := json.NewDecoder(reader).Decode(&input); err != nil {
+		return nil, fmt.Errorf("json: %w", err)
 	}
 
-	var newLine bytes.Buffer
+	var result bytes.Buffer
 	iter := jqCode.RunWithContext(ctx, input)
 	for {
 		v, ok := iter.Next()
@@ -42,14 +53,14 @@ func execJQ(ctx context.Context, jqCode *gojq.Code, content []byte) ([]byte, err
 		}
 
 		if err, ok := v.(error); ok {
-			return nil, fmt.Errorf("jq: %w: %s", err, string(content))
+			return nil, fmt.Errorf("jq: %w", err)
 		}
 
-		result, err := gojq.Marshal(v)
+		encoded, err := gojq.Marshal(v)
 		if err != nil {
-			return nil, fmt.Errorf("jq: %w: %s", err, string(content))
+			return nil, fmt.Errorf("jq: %w", err)
 		}
-		newLine.Write(result)
+		result.Write(encoded)
 	}
-	return newLine.Bytes(), nil
+	return result.Bytes(), nil
 }
