@@ -27,7 +27,7 @@ func MapJQ(query string) (LineMap, error) {
 	}
 
 	return func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
-		b, err := execJQ(ctx, jqCode, line)
+		b, err := execJQBytes(ctx, jqCode, line)
 		if err != nil {
 			return 0, err
 		}
