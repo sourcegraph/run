@@ -90,7 +90,7 @@ const (
 func attachOutputAndRun(ctx context.Context, attach attachedOuput, cmd *exec.Cmd) Output {
 	// Set up buffers for output and errors - we need to retain a copy of stderr for error
 	// creation.
-	var outputBuffer, stderrCopy = makeBuffer(), makeBuffer()
+	var outputBuffer, stderrCopy = makeUnboundedBuffer(), makeUnboundedBuffer()
 
 	// We use this buffered pipe from github.com/djherbis/nio that allows async read and
 	// write operations to the reader and writer portions of the pipe respectively.
@@ -202,7 +202,7 @@ func (o *commandOutput) Read(p []byte) (int, error) {
 	// Otherwise, we can only really read the whole thing and send the data back bit by
 	// bit as read requests come in.
 	if o.mappedData == nil {
-		reader, writer := nio.Pipe(makeBuffer())
+		reader, writer := nio.Pipe(makeUnboundedBuffer())
 		go func() {
 			_, err := o.mapFuncs.Pipe(o.ctx, o.reader, writer, nil)
 			writer.CloseWithError(err)
