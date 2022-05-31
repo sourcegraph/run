@@ -1,6 +1,8 @@
 package run
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"io"
 )
@@ -33,4 +35,61 @@ func MapJQ(query string) (LineMap, error) {
 		}
 		return dst.Write(b)
 	}, nil
+}
+
+type lineMaps []LineMap
+
+// Pipe applies lineMaps sequentially to dst from src, and returns the number of bytes
+// read.
+func (m lineMaps) Pipe(ctx context.Context, src io.Reader, dst io.Writer, close func()) (int64, error) {
+	if close != nil {
+		defer close()
+	}
+
+	scanner := bufio.NewScanner(src)
+
+	var buf bytes.Buffer
+	var totalWritten int64
+	for scanner.Scan() {
+		line := scanner.Bytes()
+
+		// Defaults to true because if no map funcs unset this, then we will write the
+		// entire line.
+		writeCalled := true
+
+		for _, f := range m {
+			tb := &tracedBuffer{Buffer: &buf}
+			buffered, err := f(ctx, line, tb)
+			if err != nil {
+				return totalWritten, err
+			}
+			writeCalled = tb.writeCalled
+
+			// Nothing written => end
+			if buffered == 0 {
+				break
+			}
+
+			// Copy bytes and reset for the next map
+			line = make([]byte, buf.Len())
+			copy(line, buf.Bytes())
+			buf.Reset()
+		}
+
+		// If anything was written, or a write was called even with an ending, treat it as
+		// a line and add a line ending for convenience, unless it already has a line
+		// ending.
+		if writeCalled && !bytes.HasSuffix(line, []byte("\n")) {
+			written, err := dst.Write(append(line, '\n'))
+			totalWritten += int64(written)
+			if err != nil {
+				return totalWritten, err
+			}
+		}
+
+		// Reset for next line
+		buf.Reset()
+	}
+
+	return totalWritten, scanner.Err()
 }

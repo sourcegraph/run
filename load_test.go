@@ -3,6 +3,7 @@ package run
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"testing"
 
@@ -51,5 +52,36 @@ func TestLargeOutput(t *testing.T) {
 
 		c.Assert(out.String(), qt.Equals, string(largeOutputContents),
 			qt.Commentf("Only got %d bytes", out.Len()))
+	})
+
+	c.Run("mapped read", func(c *qt.C) {
+		var (
+			oldLicense = []byte("License")
+			newLicense = []byte("Robert")
+
+			oldSourcegraph = []byte("Sourcegraph")
+			newSourcegraph = []byte("Horsegraph")
+		)
+		output := runLargeOutputCommand().
+			Map(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
+				return dst.Write(bytes.ReplaceAll(line, oldLicense, newLicense))
+			}).
+			Map(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
+				return dst.Write(bytes.ReplaceAll(line, oldSourcegraph, newSourcegraph))
+			})
+
+		// Test the reader implementation
+		data, err := io.ReadAll(output)
+		c.Assert(err, qt.IsNil)
+
+		// We should have roughly all the data here
+		wantLowerBound := len(largeOutputContents) * 8 / 10
+		c.Assert(len(data) > wantLowerBound, qt.IsTrue,
+			qt.Commentf("Only got %d bytes, wanted more than %d", len(data), wantLowerBound))
+
+		c.Assert(string(data), qt.Contains, string(newLicense))
+		c.Assert(bytes.Contains(data, oldLicense), qt.IsFalse)
+		c.Assert(string(data), qt.Contains, string(newSourcegraph))
+		c.Assert(bytes.Contains(data, oldSourcegraph), qt.IsFalse)
 	})
 }
