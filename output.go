@@ -1,8 +1,6 @@
 package run
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -10,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/djherbis/buffer"
 	"github.com/djherbis/nio/v3"
 )
 
@@ -68,7 +65,10 @@ type commandOutput struct {
 	reader io.ReadCloser
 
 	// mapFuncs define LineMaps to be applied at aggregation time.
-	mapFuncs []LineMap
+	mapFuncs lineMaps
+
+	// mappedData is set by incremental aggregators like Read, and holds mapped results.
+	mappedData io.Reader
 
 	// waitAndCloseFunc should only be called via doWaitOnce(). It should wait for command
 	// exit and handle setting an error such that once reads from reader are complete, the
@@ -79,8 +79,6 @@ type commandOutput struct {
 
 var _ Output = &commandOutput{}
 
-var maxBufferSize int64 = 128 * 1024
-
 type attachedOuput int
 
 const (
@@ -90,11 +88,9 @@ const (
 )
 
 func attachOutputAndRun(ctx context.Context, attach attachedOuput, cmd *exec.Cmd) Output {
-	// Use unbounded buffers that create files of size fileBuffersSize to store overflow.
-	fileBuffersSize := maxBufferSize / int64(4)
-	outputBuffer := buffer.NewUnboundedBuffer(maxBufferSize, fileBuffersSize)
-	// We need to retain a copy of stderr for error creation.
-	stderrCopy := buffer.NewUnboundedBuffer(maxBufferSize, fileBuffersSize)
+	// Set up buffers for output and errors - we need to retain a copy of stderr for error
+	// creation.
+	var outputBuffer, stderrCopy = makeBuffer(), makeBuffer()
 
 	// We use this buffered pipe from github.com/djherbis/nio that allows async read and
 	// write operations to the reader and writer portions of the pipe respectively.
@@ -149,7 +145,7 @@ func (o *commandOutput) Stream(dst io.Writer) error {
 func (o *commandOutput) StreamLines(dst func(line []byte)) error {
 	go o.waitAndClose()
 
-	_, err := o.mappedLinePipe(newLineWriter(dst), nil)
+	_, err := o.mapFuncs.Pipe(o.ctx, o.reader, newLineWriter(dst), nil)
 	return err
 }
 
@@ -161,7 +157,7 @@ func (o *commandOutput) Lines() ([]string, error) {
 	errC := make(chan error)
 	go func() {
 		dst := newLineWriter(func(line []byte) { linesC <- string(line) })
-		_, err := o.mappedLinePipe(dst, func() { close(linesC) })
+		_, err := o.mapFuncs.Pipe(o.ctx, o.reader, dst, func() { close(linesC) })
 		errC <- err
 	}()
 
@@ -188,17 +184,33 @@ func (o *commandOutput) JQ(query string) ([]byte, error) {
 }
 
 func (o *commandOutput) String() (string, error) {
-	b, err := io.ReadAll(o)
-	if err != nil {
+	var sb strings.Builder
+	if err := o.Stream(&sb); err != nil {
 		return "", err
 	}
-	return strings.TrimSuffix(string(b), "\n"), nil
+	return strings.TrimSuffix(sb.String(), "\n"), nil
 }
 
 func (o *commandOutput) Read(p []byte) (int, error) {
 	go o.waitAndClose()
 
-	return o.reader.Read(p)
+	if len(o.mapFuncs) == 0 {
+		// Happy path, just read
+		return o.reader.Read(p)
+	}
+
+	// Otherwise, we can only really read the whole thing and send the data back bit by
+	// bit as read requests come in.
+	if o.mappedData == nil {
+		reader, writer := nio.Pipe(makeBuffer())
+		go func() {
+			_, err := o.mapFuncs.Pipe(o.ctx, o.reader, writer, nil)
+			writer.CloseWithError(err)
+		}()
+		o.mappedData = reader
+	}
+
+	return o.mappedData.Read(p)
 }
 
 // WriteTo implements io.WriterTo, and returns int64 instead of int because of:
@@ -211,7 +223,7 @@ func (o *commandOutput) WriteTo(dst io.Writer) (int64, error) {
 		return io.Copy(dst, o.reader)
 	}
 
-	return o.mappedLinePipe(dst, nil)
+	return o.mapFuncs.Pipe(o.ctx, o.reader, dst, nil)
 }
 
 func (o *commandOutput) Wait() error {
@@ -232,63 +244,4 @@ func (o *commandOutput) waitAndClose() error {
 		err = o.waitAndCloseFunc()
 	})
 	return err
-}
-
-func (o *commandOutput) mappedLinePipe(dst io.Writer, close func()) (int64, error) {
-	if close != nil {
-		defer close()
-	}
-
-	scanner := bufio.NewScanner(o.reader)
-
-	// TODO should we introduce API for configuring max capacity?
-	// Errors will happen with lengths > 65536
-	// const maxCapacity int = longLineLen
-	// buf := make([]byte, maxCapacity)
-	// scanner.Buffer(buf, maxCapacity)
-
-	var buf bytes.Buffer
-	var totalWritten int64
-	for scanner.Scan() {
-		line := scanner.Bytes()
-
-		// Defaults to true because if no map funcs unset this, then we will write the
-		// entire line.
-		writeCalled := true
-
-		for _, f := range o.mapFuncs {
-			tb := &tracedBuffer{Buffer: &buf}
-			buffered, err := f(o.ctx, line, tb)
-			if err != nil {
-				return totalWritten, err
-			}
-			writeCalled = tb.writeCalled
-
-			// Nothing written => end
-			if buffered == 0 {
-				break
-			}
-
-			// Copy bytes and reset for the next map
-			line = make([]byte, buf.Len())
-			copy(line, buf.Bytes())
-			buf.Reset()
-		}
-
-		// If anything was written, or a write was called even with an ending, treat it as
-		// a line and add a line ending for convenience, unless it already has a line
-		// ending.
-		if writeCalled && !bytes.HasSuffix(line, []byte("\n")) {
-			written, err := dst.Write(append(line, '\n'))
-			totalWritten += int64(written)
-			if err != nil {
-				return totalWritten, err
-			}
-		}
-
-		// Reset for next line
-		buf.Reset()
-	}
-
-	return totalWritten, scanner.Err()
 }

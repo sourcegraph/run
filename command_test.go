@@ -120,6 +120,19 @@ func TestRunAndAggregate(t *testing.T) {
 			},
 			expect: "goodbye world",
 		},
+		{
+			name: "multiple mapped output",
+			output: func() run.Output {
+				return run.Cmd(ctx, command).Run().
+					Map(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
+						return dst.Write(bytes.ReplaceAll(line, []byte("hello"), []byte("goodbye")))
+					}).
+					Map(func(ctx context.Context, line []byte, dst io.Writer) (int, error) {
+						return dst.Write(bytes.ReplaceAll(line, []byte("world"), []byte("jh")))
+					})
+			},
+			expect: "goodbye jh",
+		},
 	} {
 		c.Run(tc.name, func(c *qt.C) {
 			for _, test := range outputTests {
