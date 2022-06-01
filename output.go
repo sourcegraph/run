@@ -56,6 +56,9 @@ type Output interface {
 //
 // It only handles piping output and configuration - aggregation is handled by the embedded
 // aggregator.
+//
+// All aggregation functions should take care that all output collected is returned,
+// regardless of whether read operations return errors.
 type commandOutput struct {
 	ctx context.Context
 
@@ -186,7 +189,7 @@ func (o *commandOutput) JQ(query string) ([]byte, error) {
 func (o *commandOutput) String() (string, error) {
 	var sb strings.Builder
 	if err := o.Stream(&sb); err != nil {
-		return "", err
+		return sb.String(), err
 	}
 	return strings.TrimSuffix(sb.String(), "\n"), nil
 }

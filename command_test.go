@@ -13,8 +13,8 @@ import (
 	"github.com/sourcegraph/run"
 )
 
-var outputTests = []func(c *qt.C, out run.Output, expect string){
-	func(c *qt.C, out run.Output, expect string) {
+var outputTests = []func(c *qt.C, out run.Output, expect string, expectError bool){
+	func(c *qt.C, out run.Output, expect string, expectError bool) {
 		c.Run("Stream", func(c *qt.C) {
 			var b bytes.Buffer
 			err := out.Stream(&b)
@@ -22,7 +22,7 @@ var outputTests = []func(c *qt.C, out run.Output, expect string){
 			c.Assert(b.String(), qt.Equals, fmt.Sprintf("%s\n", expect))
 		})
 	},
-	func(c *qt.C, out run.Output, expect string) {
+	func(c *qt.C, out run.Output, expect string, expectError bool) {
 		c.Run("StreamLines", func(c *qt.C) {
 			linesC := make(chan []byte, 10)
 			err := out.StreamLines(func(line []byte) {
@@ -39,30 +39,40 @@ var outputTests = []func(c *qt.C, out run.Output, expect string){
 			c.Assert(string(lines[0]), qt.Equals, expect)
 		})
 	},
-	func(c *qt.C, out run.Output, expect string) {
+	func(c *qt.C, out run.Output, expect string, expectError bool) {
 		c.Run("Lines", func(c *qt.C) {
 			lines, err := out.Lines()
-			c.Assert(err, qt.IsNil)
+			if !expectError {
+				c.Assert(err, qt.IsNil)
+			}
 			c.Assert(len(lines), qt.Equals, 1)
 			c.Assert(lines[0], qt.Equals, expect)
 		})
 	},
-	func(c *qt.C, out run.Output, expect string) {
+	func(c *qt.C, out run.Output, expect string, expectError bool) {
 		c.Run("String", func(c *qt.C) {
 			str, err := out.String()
-			c.Assert(err, qt.IsNil)
+			if !expectError {
+				c.Assert(err, qt.IsNil)
+			}
 			c.Assert(str, qt.Equals, expect)
 		})
 	},
-	func(c *qt.C, out run.Output, expect string) {
+	func(c *qt.C, out run.Output, expect string, expectError bool) {
 		c.Run("Read: fixed bytes", func(c *qt.C) {
 			b := make([]byte, 100)
 			n, err := out.Read(b)
-			c.Assert(err, qt.IsNil)
+			if !expectError {
+				c.Assert(err, qt.IsNil)
+			}
 			c.Assert(string(b[0:n]), qt.Equals, fmt.Sprintf("%s\n", expect))
 		})
 	},
-	func(c *qt.C, out run.Output, expect string) {
+	func(c *qt.C, out run.Output, expect string, expectError bool) {
+		if expectError {
+			return // not applicable
+		}
+
 		c.Run("Read: exactly length of output", func(c *qt.C) {
 			// Read exactly the amount of output
 			b := make([]byte, len(expect)+1)
@@ -76,17 +86,21 @@ var outputTests = []func(c *qt.C, out run.Output, expect string){
 			c.Assert(err, qt.Equals, io.EOF)
 		})
 	},
-	func(c *qt.C, out run.Output, expect string) {
+	func(c *qt.C, out run.Output, expect string, expectError bool) {
 		c.Run("Read: io.ReadAll", func(c *qt.C) {
 			b, err := io.ReadAll(out)
-			c.Assert(err, qt.IsNil)
+			if !expectError {
+				c.Assert(err, qt.IsNil)
+			}
 			c.Assert(string(b), qt.Equals, fmt.Sprintf("%s\n", expect))
 		})
 	},
-	func(c *qt.C, out run.Output, expect string) {
+	func(c *qt.C, out run.Output, expect string, expectError bool) {
 		c.Run("Wait", func(c *qt.C) {
 			err := out.Wait()
-			c.Assert(err, qt.IsNil)
+			if !expectError {
+				c.Assert(err, qt.IsNil)
+			}
 		})
 	},
 }
@@ -98,9 +112,10 @@ func TestRunAndAggregate(t *testing.T) {
 	command := `echo "hello world"`
 
 	type testCase struct {
-		name   string
-		output func() run.Output
-		expect string
+		name        string
+		output      func() run.Output
+		expect      string
+		expectError bool
 	}
 	for _, tc := range []testCase{
 		{
@@ -109,6 +124,14 @@ func TestRunAndAggregate(t *testing.T) {
 				return run.Cmd(ctx, command).Run()
 			},
 			expect: "hello world",
+		},
+		{
+			name: "plain output and exit with error",
+			output: func() run.Output {
+				return run.Cmd(ctx, command, "; exit 1").Run()
+			},
+			expect:      "hello world ; exit 1",
+			expectError: true,
 		},
 		{
 			name: "mapped output",
@@ -136,7 +159,7 @@ func TestRunAndAggregate(t *testing.T) {
 	} {
 		c.Run(tc.name, func(c *qt.C) {
 			for _, test := range outputTests {
-				test(c, tc.output(), tc.expect)
+				test(c, tc.output(), tc.expect, tc.expectError)
 			}
 		})
 	}
