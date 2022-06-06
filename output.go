@@ -236,7 +236,7 @@ func (o *commandOutput) Wait() error {
 	return err
 }
 
-// goWaitOnce waits for command completion and closes the write half of the reader. Most
+// waitAndClose waits for command completion and closes the write half of the reader. Most
 // callers do not need to use the returned error - operations that read from o.reader
 // should return the error from that instead, which in most cases should be the same error.
 func (o *commandOutput) waitAndClose() error {

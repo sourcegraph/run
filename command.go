@@ -94,7 +94,7 @@ func (c *Command) Env(env map[string]string) *Command {
 	return c
 }
 
-// InheritEnv adds the given strings representing the environment (key=value) to the
+// Environ adds the given strings representing the environment (key=value) to the
 // command, for example os.Environ().
 func (c *Command) Environ(environ []string) *Command {
 	c.environ = append(c.environ, environ...)
