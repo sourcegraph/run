@@ -14,7 +14,7 @@ func (o *errorOutput) StdOut() Output     { return o }
 func (o *errorOutput) Map(LineMap) Output { return o }
 
 func (o *errorOutput) Stream(io.Writer) error           { return o.err }
-func (o *errorOutput) StreamLines(func([]byte)) error   { return o.err }
+func (o *errorOutput) StreamLines(func(string)) error   { return o.err }
 func (o *errorOutput) Lines() ([]string, error)         { return nil, o.err }
 func (o *errorOutput) String() (string, error)          { return "", o.err }
 func (o *errorOutput) JQ(string) ([]byte, error)        { return nil, o.err }

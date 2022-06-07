@@ -24,14 +24,14 @@ var outputTests = []func(c *qt.C, out run.Output, expect string, expectError boo
 	},
 	func(c *qt.C, out run.Output, expect string, expectError bool) {
 		c.Run("StreamLines", func(c *qt.C) {
-			linesC := make(chan []byte, 10)
-			err := out.StreamLines(func(line []byte) {
+			linesC := make(chan string, 10)
+			err := out.StreamLines(func(line string) {
 				linesC <- line
 			})
 			c.Assert(err, qt.IsNil)
 			close(linesC)
 
-			var lines [][]byte
+			var lines []string
 			for l := range linesC {
 				lines = append(lines, l)
 			}

@@ -31,7 +31,7 @@ type Output interface {
 	Stream(dst io.Writer) error
 	// StreamLines writes mapped output from the command and sends it line by line to the
 	// destination callback until command completion.
-	StreamLines(dst func(line []byte)) error
+	StreamLines(dst func(line string)) error
 	// Lines waits for command completion and aggregates mapped output from the command as
 	// a slice of lines.
 	Lines() ([]string, error)
@@ -145,10 +145,12 @@ func (o *commandOutput) Stream(dst io.Writer) error {
 	return err
 }
 
-func (o *commandOutput) StreamLines(dst func(line []byte)) error {
+func (o *commandOutput) StreamLines(dst func(line string)) error {
 	go o.waitAndClose()
 
-	_, err := o.mapFuncs.Pipe(o.ctx, o.reader, newLineWriter(dst), nil)
+	_, err := o.mapFuncs.Pipe(o.ctx, o.reader, newLineWriter(func(b []byte) {
+		dst(string(b))
+	}), nil)
 	return err
 }
 
