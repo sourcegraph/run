@@ -5,24 +5,28 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
 
 	"bitbucket.org/creachadair/shell"
 )
 
-// Command builds a command for execution. Functions modify the underlying command.
-type Command struct {
-	ctx context.Context
-
+type ExecOptions struct {
 	args    []string
 	environ []string
 	dir     string
 	stdin   io.Reader
 	attach  attachedOuput
+}
+
+// Command builds a command for execution. Functions modify the underlying command.
+type Command struct {
+	ctx context.Context
+	ExecOptions
 
 	// buildError represents an error that occured when building this command.
 	buildError error
+	// outputer is the implementation for creating an Output from ExecOptions
+	outputter func(context.Context, ExecOptions) Output
 }
 
 // Cmd joins all the parts and builds a command from it.
@@ -35,8 +39,11 @@ func Cmd(ctx context.Context, parts ...string) *Command {
 	}
 
 	return &Command{
-		ctx:  ctx,
-		args: args,
+		ctx: ctx,
+		ExecOptions: ExecOptions{
+			args: args,
+		},
+		outputter: execOutput,
 	}
 }
 
@@ -47,20 +54,17 @@ func Bash(ctx context.Context, parts ...string) *Command {
 	return Cmd(ctx, "bash -c", Arg(strings.Join(parts, " ")))
 }
 
+// Outputter creates a command for executing outputter.
+func Out(outputter Outputter) *Command {
+	return &Command{outputter: outputter}
+}
+
 // Run starts command execution and returns Output, which defaults to combined output.
 func (c *Command) Run() Output {
 	if c.buildError != nil {
 		return NewErrorOutput(c.buildError)
 	}
-	if len(c.args) == 0 {
-		return NewErrorOutput(errors.New("Command not instantiated"))
-	}
-
-	cmd := exec.CommandContext(c.ctx, c.args[0], c.args[1:]...)
-	cmd.Dir = c.dir
-	cmd.Stdin = c.stdin
-	cmd.Env = c.environ
-	return attachOutputAndRun(c.ctx, c.attach, cmd)
+	return c.outputter(c.ctx, c.ExecOptions)
 }
 
 // Dir sets the directory this command should be executed in.

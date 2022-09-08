@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -50,6 +51,22 @@ type Output interface {
 
 	// Wait waits for command completion and returns.
 	Wait() error
+}
+
+// Outputter apoplies ExecOptions and provides Output that can be operated on.
+type Outputter func(context.Context, ExecOptions) Output
+
+// execOutput is the default Outputter implementation.
+func execOutput(ctx context.Context, e ExecOptions) Output {
+	if len(e.args) == 0 {
+		return NewErrorOutput(errors.New("Command not instantiated"))
+	}
+
+	cmd := exec.CommandContext(ctx, e.args[0], e.args[1:]...)
+	cmd.Dir = e.dir
+	cmd.Stdin = e.stdin
+	cmd.Env = e.environ
+	return attachOutputAndRun(ctx, e.attach, cmd)
 }
 
 // commandOutput is the core Output implementation, designed to be attached to an exec.Cmd.
