@@ -9,6 +9,9 @@ import (
 	"sync"
 
 	"github.com/djherbis/nio/v3"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Output configures output and aggregation from a command.
@@ -82,15 +85,35 @@ type commandOutput struct {
 
 var _ Output = &commandOutput{}
 
-type attachedOuput int
+type attachedOutput int
 
 const (
-	attachCombined   = 0
-	attachOnlyStdOut = 1
-	attachOnlyStdErr = 2
+	attachCombined   attachedOutput = 0
+	attachOnlyStdOut attachedOutput = 1
+	attachOnlyStdErr attachedOutput = 2
 )
 
-func attachOutputAndRun(ctx context.Context, attach attachedOuput, cmd *exec.Cmd) Output {
+// attachOutputAndRun is called by (*Command).Run() to start command execution and collect
+// command output.
+func attachAndRun(
+	ctx context.Context,
+	attachOutput attachedOutput,
+	attachInput io.Reader,
+	executedCmd ExecutedCommand,
+) Output {
+	// Set up command
+	cmd := exec.CommandContext(ctx, executedCmd.Args[0], executedCmd.Args[1:]...)
+	cmd.Dir = executedCmd.Dir
+	cmd.Env = executedCmd.Environ
+	cmd.Stdin = attachInput
+
+	// Prepare tracing
+	tracer, attrs := getTracer(ctx)
+	// span should manually be ended in error scenarios - make sure each code path that
+	// should end the span appropriately ends the span before returning.
+	var span trace.Span
+	ctx, span = tracer.Start(ctx, "Run "+cmd.Path, trace.WithAttributes(attrs(executedCmd)...))
+
 	// Set up buffers for output and errors - we need to retain a copy of stderr for error
 	// creation.
 	var outputBuffer, stderrCopy = makeUnboundedBuffer(), makeUnboundedBuffer()
@@ -100,7 +123,7 @@ func attachOutputAndRun(ctx context.Context, attach attachedOuput, cmd *exec.Cmd
 	outputReader, outputWriter := nio.Pipe(outputBuffer)
 
 	// Set up output hooks
-	switch attach {
+	switch attachOutput {
 	case attachCombined:
 		cmd.Stdout = outputWriter
 		cmd.Stderr = io.MultiWriter(stderrCopy, outputWriter)
@@ -114,25 +137,50 @@ func attachOutputAndRun(ctx context.Context, attach attachedOuput, cmd *exec.Cmd
 		cmd.Stderr = io.MultiWriter(stderrCopy, outputWriter)
 
 	default:
-		return NewErrorOutput(fmt.Errorf("unexpected attach type %d", attach))
-	}
-
-	// Start command execution
-	if err := cmd.Start(); err != nil {
+		err := fmt.Errorf("unexpected attach type %d", attachOutput)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "")
+		span.End()
 		return NewErrorOutput(err)
 	}
 
-	return &commandOutput{
+	// Log and start command execution
+	if log := getLogger(ctx); log != nil {
+		log(executedCmd)
+	}
+	if err := cmd.Start(); err != nil {
+		err := fmt.Errorf("failed to start command: %w", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "")
+		span.End()
+		return NewErrorOutput(err)
+	}
+
+	output := &commandOutput{
 		ctx:    ctx,
 		reader: outputReader,
-		waitAndCloseFunc: func() error {
-			err := newError(cmd.Wait(), stderrCopy)
-			// CloseWithError makes it so that when all output has been consumed from the
-			// reader, the given error is returned.
-			outputWriter.CloseWithError(err)
-			return err
-		},
 	}
+
+	output.waitAndCloseFunc = func() error {
+		// In the happy case, this is where we end the span - when the command finishes
+		// and all resources are closed.
+		defer span.End()
+
+		// Track finalized attributes
+		span.SetAttributes(attribute.Int("mapFuncs", len(output.mapFuncs)))
+
+		err := newError(cmd.Wait(), stderrCopy)
+		span.AddEvent("Done")
+		span.RecordError(err)
+
+		// CloseWithError makes it so that when all output has been consumed from the
+		// reader, the given error is returned.
+		outputWriter.CloseWithError(err)
+
+		return err
+	}
+
+	return output
 }
 
 func (o *commandOutput) Map(f LineMap) Output {
@@ -141,11 +189,15 @@ func (o *commandOutput) Map(f LineMap) Output {
 }
 
 func (o *commandOutput) Stream(dst io.Writer) error {
+	trace.SpanFromContext(o.ctx).AddEvent("Stream")
+
 	_, err := o.WriteTo(dst)
 	return err
 }
 
 func (o *commandOutput) StreamLines(dst func(line string)) error {
+	trace.SpanFromContext(o.ctx).AddEvent("StreamLines")
+
 	go o.waitAndClose()
 
 	_, err := o.mapFuncs.Pipe(o.ctx, o.reader, newLineWriter(func(b []byte) {
@@ -155,6 +207,8 @@ func (o *commandOutput) StreamLines(dst func(line string)) error {
 }
 
 func (o *commandOutput) Lines() ([]string, error) {
+	trace.SpanFromContext(o.ctx).AddEvent("Lines")
+
 	go o.waitAndClose()
 
 	// export lines
@@ -176,19 +230,21 @@ func (o *commandOutput) Lines() ([]string, error) {
 }
 
 func (o *commandOutput) JQ(query string) ([]byte, error) {
+	trace.SpanFromContext(o.ctx).AddEvent("JQ")
+
 	jqCode, err := buildJQ(query)
 	if err != nil {
+		// Record this error because it is not related to reading/writing
+		trace.SpanFromContext(o.ctx).RecordError(err)
 		return nil, err
 	}
 
-	result, err := execJQ(o.ctx, jqCode, o)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
+	return execJQ(o.ctx, jqCode, o)
 }
 
 func (o *commandOutput) String() (string, error) {
+	trace.SpanFromContext(o.ctx).AddEvent("String")
+
 	var sb strings.Builder
 	if err := o.Stream(&sb); err != nil {
 		return sb.String(), err
@@ -197,6 +253,8 @@ func (o *commandOutput) String() (string, error) {
 }
 
 func (o *commandOutput) Read(p []byte) (int, error) {
+	trace.SpanFromContext(o.ctx).AddEvent("Read")
+
 	go o.waitAndClose()
 
 	if len(o.mapFuncs) == 0 {
@@ -221,6 +279,8 @@ func (o *commandOutput) Read(p []byte) (int, error) {
 // WriteTo implements io.WriterTo, and returns int64 instead of int because of:
 // https://stackoverflow.com/questions/29658892/why-does-io-writertos-writeto-method-return-an-int64-rather-than-an-int
 func (o *commandOutput) WriteTo(dst io.Writer) (int64, error) {
+	trace.SpanFromContext(o.ctx).AddEvent("WriteTo")
+
 	go o.waitAndClose()
 
 	if len(o.mapFuncs) == 0 {
@@ -232,6 +292,8 @@ func (o *commandOutput) WriteTo(dst io.Writer) (int64, error) {
 }
 
 func (o *commandOutput) Wait() error {
+	trace.SpanFromContext(o.ctx).AddEvent("Wait")
+
 	err := o.waitAndClose()
 	// Wait does not consume output, so prevent further reads from occuring.
 	o.reader.Close()

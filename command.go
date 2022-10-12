@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
 
 	"bitbucket.org/creachadair/shell"
@@ -18,8 +17,9 @@ type Command struct {
 	args    []string
 	environ []string
 	dir     string
-	stdin   io.Reader
-	attach  attachedOuput
+
+	stdin  io.Reader
+	attach attachedOutput
 
 	// buildError represents an error that occured when building this command.
 	buildError error
@@ -27,7 +27,7 @@ type Command struct {
 
 // Cmd joins all the parts and builds a command from it.
 //
-// Arguments are not implicitly quoted - to quote arguemnts, you can use Arg.
+// Arguments are not implicitly quoted - to quote arguments, you can use Arg.
 func Cmd(ctx context.Context, parts ...string) *Command {
 	args, ok := shell.Split(strings.Join(parts, " "))
 	if !ok {
@@ -56,11 +56,11 @@ func (c *Command) Run() Output {
 		return NewErrorOutput(errors.New("Command not instantiated"))
 	}
 
-	cmd := exec.CommandContext(c.ctx, c.args[0], c.args[1:]...)
-	cmd.Dir = c.dir
-	cmd.Stdin = c.stdin
-	cmd.Env = c.environ
-	return attachOutputAndRun(c.ctx, c.attach, cmd)
+	return attachAndRun(c.ctx, c.attach, c.stdin, ExecutedCommand{
+		Args:    c.args,
+		Environ: c.environ,
+		Dir:     c.dir,
+	})
 }
 
 // Dir sets the directory this command should be executed in.
