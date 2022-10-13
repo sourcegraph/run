@@ -2,12 +2,15 @@ package run_test
 
 import (
 	"context"
+	"io"
 	"testing"
+	"time"
 
 	qt "github.com/frankban/quicktest"
 	"github.com/sourcegraph/run"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestInstrumentation(t *testing.T) {
@@ -22,42 +25,55 @@ func TestInstrumentation(t *testing.T) {
 		})
 
 		// Run a command
-		_ = run.Cmd(ctx, "foobar").Run().Wait()
+		_ = run.Cmd(ctx, "echo 'hello world'").Run().Wait()
 
 		// Check logged results
 		c.Assert(entries, qt.HasLen, 1)
-		c.Assert(entries[0].Args, qt.CmpEquals(), []string{"foobar"})
+		c.Assert(entries[0].Args, qt.CmpEquals(), []string{"echo", "hello world"})
 	})
 
 	c.Run("Tracing", func(c *qt.C) {
 		// Enable tracing in context
 		ctx := context.Background()
-		var traces mockTracerProvider
-		otel.SetTracerProvider(&traces)
 		ctx = run.TraceCommands(ctx, run.DefaultTraceAttributes)
 
-		// Run a command
-		_ = run.Cmd(ctx, "foobar").Run().Wait()
+		c.Run("Wait", func(c *qt.C) {
+			// Set up tracing mock
+			traces := tracetest.NewSpanRecorder()
+			otel.SetTracerProvider(trace.NewTracerProvider(
+				trace.WithSpanProcessor(traces),
+			))
 
-		c.Assert(traces.spans, qt.HasLen, 1)
-		c.Assert(traces.spans, qt.CmpEquals(), []string{"Run foobar"})
+			// Run a command
+			_ = run.Cmd(ctx, "echo 'hello world'").Run().Wait()
+
+			// Check created spans
+			spans := traces.Ended()
+			c.Assert(spans, qt.HasLen, 1)
+			c.Assert(spans[0].Name(), qt.Equals, "Run /bin/echo")
+			c.Assert(spans[0].Events(), qt.HasLen, 2)     // Wait, Done
+			c.Assert(spans[0].Attributes(), qt.HasLen, 2) // Args, Dir
+		})
+
+		c.Run("Stream (more complicated example)", func(c *qt.C) {
+			// Set up tracing mock
+			traces := tracetest.NewSpanRecorder()
+			otel.SetTracerProvider(trace.NewTracerProvider(
+				trace.WithSpanProcessor(traces),
+			))
+
+			// Run a command
+			_ = run.Cmd(ctx, "echo 'hello world'").Run().Stream(io.Discard)
+
+			// Span is ended asynchronously
+			time.Sleep(1 * time.Millisecond)
+
+			// Check created spans
+			spans := traces.Ended()
+			c.Assert(spans, qt.HasLen, 1)
+			c.Assert(spans[0].Name(), qt.Equals, "Run /bin/echo")
+			c.Assert(spans[0].Events(), qt.HasLen, 3)     // Stream, WriteTo, Done
+			c.Assert(spans[0].Attributes(), qt.HasLen, 2) // Args, Dir
+		})
 	})
-
-}
-
-type mockTracerProvider struct {
-	spans []string
-}
-
-func (m *mockTracerProvider) Tracer(name string, opts ...trace.TracerOption) trace.Tracer {
-	return &mockTracer{provider: m}
-}
-
-type mockTracer struct {
-	provider *mockTracerProvider
-}
-
-func (m *mockTracer) Start(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	m.provider.spans = append(m.provider.spans, spanName)
-	return trace.NewNoopTracerProvider().Tracer("").Start(ctx, spanName, opts...)
 }

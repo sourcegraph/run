@@ -46,13 +46,12 @@ type TraceAttributesFunc func(ExecutedCommand) []attribute.KeyValue
 
 var _ TraceAttributesFunc = DefaultTraceAttributes
 
-// DefaultTraceAttributes adds Path, Dir, and Args as attributes. Note that Args may
-// contain sensitive data.
+// DefaultTraceAttributes adds Args and Dir as attributes. Note that Args may contain
+// sensitive data.
 func DefaultTraceAttributes(e ExecutedCommand) []attribute.KeyValue {
 	return []attribute.KeyValue{
-		attribute.String("Path", e.Args[0]),
+		attribute.StringSlice("Args", e.Args),
 		attribute.String("Dir", e.Dir),
-		attribute.StringSlice("Args", e.Args[1:]),
 	}
 }
 

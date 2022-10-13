@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/djherbis/nio/v3"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -166,12 +165,12 @@ func attachAndRun(
 		// and all resources are closed.
 		defer span.End()
 
-		// Track finalized attributes
-		span.SetAttributes(attribute.Int("mapFuncs", len(output.mapFuncs)))
-
 		err := newError(cmd.Wait(), stderrCopy)
-		span.AddEvent("Done")
-		span.RecordError(err)
+		span.AddEvent("Done") // add done event because some time may elapse before span end
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "")
+		}
 
 		// CloseWithError makes it so that when all output has been consumed from the
 		// reader, the given error is returned.
