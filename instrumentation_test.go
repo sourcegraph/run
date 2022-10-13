@@ -22,6 +22,7 @@ func TestInstrumentation(t *testing.T) {
 		var entries []run.ExecutedCommand
 		ctx = run.LogCommands(ctx, func(e run.ExecutedCommand) {
 			entries = append(entries, e)
+			t.Logf("%+v", e)
 		})
 
 		// Run a command
@@ -50,7 +51,10 @@ func TestInstrumentation(t *testing.T) {
 			// Check created spans
 			spans := traces.Ended()
 			c.Assert(spans, qt.HasLen, 1)
-			c.Assert(spans[0].Name(), qt.Equals, "Run /bin/echo")
+			// The name has the full evaluated path of a command, which varies from
+			// environment to environment, so we do a substring match.
+			c.Assert(spans[0].Name(), qt.Contains, "Run")
+			c.Assert(spans[0].Name(), qt.Contains, "/echo")
 			c.Assert(spans[0].Events(), qt.HasLen, 2)     // Wait, Done
 			c.Assert(spans[0].Attributes(), qt.HasLen, 2) // Args, Dir
 		})
@@ -71,7 +75,10 @@ func TestInstrumentation(t *testing.T) {
 			// Check created spans
 			spans := traces.Ended()
 			c.Assert(spans, qt.HasLen, 1)
-			c.Assert(spans[0].Name(), qt.Equals, "Run /bin/echo")
+			// The name has the full evaluated path of a command, which varies from
+			// environment to environment, so we do a substring match.
+			c.Assert(spans[0].Name(), qt.Contains, "Run")
+			c.Assert(spans[0].Name(), qt.Contains, "/echo")
 			c.Assert(spans[0].Events(), qt.HasLen, 3)     // Stream, WriteTo, Done
 			c.Assert(spans[0].Attributes(), qt.HasLen, 2) // Args, Dir
 		})
