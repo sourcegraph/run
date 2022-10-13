@@ -22,6 +22,7 @@ type ExecutedCommand struct {
 	Environ []string
 }
 
+// LogFunc can be used to generate a log entry for the executed command.
 type LogFunc func(ExecutedCommand)
 
 // LogCommands enables logging on all commands executed by sourcegraph/run within this
@@ -42,6 +43,8 @@ func getLogger(ctx context.Context) LogFunc {
 	return v
 }
 
+// TraceAttributesFunc can be used to generate attributes to attach to a span for the
+// executed command.
 type TraceAttributesFunc func(ExecutedCommand) []attribute.KeyValue
 
 var _ TraceAttributesFunc = DefaultTraceAttributes
