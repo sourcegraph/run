@@ -10,12 +10,18 @@ import (
 	"bitbucket.org/creachadair/shell"
 )
 
+// BashOpt denotes options for running bash commands. For more options see 'man bash'
 type BashOpt string
 
-// StrictBashOpts contains two bash options 'pipefail' and 'errexit'. 'pipefail' instructs bash to fail an entire statement if any command in a pipefails. 
-// 'errexit' lets bash exit with an err exit code if a command fails . For more options see
-// 'man bash'
-var StrictBashOpts = []BashOpt{"pipefail", "errexit"}
+const (
+    // 'pipefail' instructs bash to fail an entire statement if any command in a pipefails. 
+    BashOptPipeFail BashOpt = "pipefail"
+    // 'errexit' lets bash exit with an err exit code if a command fails .
+    BashOptErrExit  BashOpt = "errexit"
+)
+
+// StrictBashOpts contains options that effectively enforce safe execution of bash commands.
+var StrictBashOpts = []BashOpt{BashOptPipeFail, BashOptErrExit}
 
 // Command builds a command for execution. Functions modify the underlying command.
 type Command struct {
