@@ -50,7 +50,7 @@ func Cmd(ctx context.Context, parts ...string) *Command {
 // BashWithOpts appends all the given bash options to the bash command with '-o'. The given parts
 // is then joined together to be executed with 'bash -c'
 //
-// The final command will have the following format: bash -o option-1 -c command. For recommened strict bash options
+// The final command will have the following format: bash -o option-1 -c command. For recommended strict bash options
 // see StrictBashOpts, which has 'pipefail' and 'errexit' options
 func BashWithOpts(ctx context.Context, opts []BashOpt, parts ...string) *Command {
 	var bash strings.Builder
