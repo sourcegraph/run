@@ -14,10 +14,10 @@ import (
 type BashOpt string
 
 const (
-    // 'pipefail' instructs bash to fail an entire statement if any command in a pipefails. 
-    BashOptPipeFail BashOpt = "pipefail"
-    // 'errexit' lets bash exit with an err exit code if a command fails .
-    BashOptErrExit  BashOpt = "errexit"
+	// 'pipefail' instructs bash to fail an entire statement if any command in a pipefails.
+	BashOptPipeFail BashOpt = "pipefail"
+	// 'errexit' lets bash exit with an err exit code if a command fails .
+	BashOptErrExit BashOpt = "errexit"
 )
 
 // StrictBashOpts contains options that effectively enforce safe execution of bash commands.
@@ -53,12 +53,12 @@ func Cmd(ctx context.Context, parts ...string) *Command {
 	}
 }
 
-// BashWithOpts appends all the given bash options to the bash command with '-o'. The given parts
+// BashWith appends all the given bash options to the bash command with '-o'. The given parts
 // is then joined together to be executed with 'bash -c'
 //
 // The final command will have the following format: bash -o option-1 -c command. For recommended strict bash options
 // see StrictBashOpts, which has 'pipefail' and 'errexit' options
-func BashWithOpts(ctx context.Context, opts []BashOpt, parts ...string) *Command {
+func BashWith(ctx context.Context, opts []BashOpt, parts ...string) *Command {
 	var bash strings.Builder
 	bash.WriteString("bash")
 	for _, v := range opts {
