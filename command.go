@@ -13,7 +13,7 @@ import (
 type BashOpt string
 
 // StrictBashOpts contains two bash options 'pipefail' and 'errexit' which ensures the scripts executed by bash exit on errors
-// and if one command in a pipe statement fails the entire pipe command exits with that status code. For more options see
+// 'errexit' lets bash exit with an err exit code if a command fails . For more options see
 // 'man bash'
 var StrictBashOpts = []BashOpt{"pipefail", "errexit"}
 
