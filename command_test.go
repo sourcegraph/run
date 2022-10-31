@@ -171,7 +171,7 @@ func TestJQ(t *testing.T) {
 
 	c.Run("cat and JQ", func(c *qt.C) {
 		const testJSON = `{
-			"hello": "world"		
+			"hello": "world"
 		}`
 
 		res, err := run.Cmd(ctx, "cat").
@@ -190,7 +190,7 @@ func TestEdgeCases(t *testing.T) {
 
 	c.Run("empty lines from map are preserved", func(c *qt.C) {
 		const testData = `hello
-		
+
 		world`
 
 		c.Run("without map", func(c *qt.C) {
@@ -243,6 +243,26 @@ func TestEdgeCases(t *testing.T) {
 			c.Assert(err, qt.IsNil)
 			c.Assert(res, qt.CmpEquals(), []string{"stdout", "stderr"})
 		})
+	})
+}
+
+func TestBashOpts(t *testing.T) {
+	c := qt.New(t)
+	ctx := context.Background()
+
+	c.Run("depending on bash mode, a pipe command that fails should return an exit code", func(c *qt.C) {
+		pipeCmd := "echo '123456789' | grep 999 | echo 1"
+		c.Run("normal bash -c - pipe that fails should not exit with non zero command", func(c *qt.C) {
+			// In the pipe grep 999 will fail, but since the last command in the pipe is a success the entire command succeeds
+			_, err := run.Bash(ctx, pipeCmd).StdOut().Run().String()
+			c.Assert(err, qt.IsNil)
+		})
+		c.Run("pipe command should fail with StrictBash", func(c *qt.C) {
+			// with StrictBashOpts, since 'grep 999' fails in the pipe, the entire command is considered to have failed
+			_, err := run.BashWithOpts(ctx, run.StrictBashOpts, pipeCmd).StdOut().Run().String()
+			c.Assert(err, qt.IsNotNil)
+		})
+
 	})
 }
 

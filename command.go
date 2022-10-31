@@ -10,6 +10,13 @@ import (
 	"bitbucket.org/creachadair/shell"
 )
 
+type BashOpt string
+
+// StrictBashOpts contains two bash options 'pipefail' and 'errexit' which ensures the scripts executed by bash exit on errors
+// and if one command in a pipe statement fails the entire pipe command exits with that status code. For more options see
+// 'man bash'
+var StrictBashOpts = []BashOpt{"pipefail", "errexit"}
+
 // Command builds a command for execution. Functions modify the underlying command.
 type Command struct {
 	ctx context.Context
@@ -38,6 +45,23 @@ func Cmd(ctx context.Context, parts ...string) *Command {
 		ctx:  ctx,
 		args: args,
 	}
+}
+
+// BashWithOpts appends all the given bash options to the bash command with '-o'. The given parts
+// is then joined together to be executed with 'bash -c'
+//
+// The final command will have the following format: bash -o option-1 -c command. For recommened strict bash options
+// see StrictBashOpts, which has 'pipefail' and 'errexit' options
+func BashWithOpts(ctx context.Context, opts []BashOpt, parts ...string) *Command {
+	var bash strings.Builder
+	bash.WriteString("bash")
+	for _, v := range opts {
+		bash.WriteString(" -o ")
+		bash.WriteString(string(v))
+	}
+	bash.WriteString(" -c")
+
+	return Cmd(ctx, bash.String(), Arg(strings.Join(parts, " ")))
 }
 
 // Bash joins all the parts and builds a command from it to be run by 'bash -c'.
