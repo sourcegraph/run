@@ -259,7 +259,7 @@ func TestBashOpts(t *testing.T) {
 		})
 		c.Run("pipe command should fail with StrictBash", func(c *qt.C) {
 			// with StrictBashOpts, since 'grep 999' fails in the pipe, the entire command is considered to have failed
-			_, err := run.BashWithOpts(ctx, run.StrictBashOpts, pipeCmd).StdOut().Run().String()
+			_, err := run.BashWith(ctx, run.StrictBashOpts, pipeCmd).StdOut().Run().String()
 			c.Assert(err, qt.IsNotNil)
 		})
 
