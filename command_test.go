@@ -141,7 +141,8 @@ func TestRunAndAggregate(t *testing.T) {
 						return dst.Write(bytes.ReplaceAll(line, []byte("hello"), []byte("goodbye")))
 					})
 			},
-			expect: "goodbye world",
+			expect:      "goodbye world",
+			expectError: true, // io.EOF
 		},
 		{
 			name: "multiple mapped output",
@@ -154,7 +155,8 @@ func TestRunAndAggregate(t *testing.T) {
 						return dst.Write(bytes.ReplaceAll(line, []byte("world"), []byte("jh")))
 					})
 			},
-			expect: "goodbye jh",
+			expect:      "goodbye jh",
+			expectError: true, // io.EOF
 		},
 	} {
 		c.Run(tc.name, func(c *qt.C) {

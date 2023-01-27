@@ -1,6 +1,10 @@
 package run
 
-import "io"
+import (
+	"io"
+
+	"go.bobheadxi.dev/streamline/pipeline"
+)
 
 type errorOutput struct{ err error }
 
@@ -9,9 +13,10 @@ type errorOutput struct{ err error }
 // before command execution.
 func NewErrorOutput(err error) Output { return &errorOutput{err: err} }
 
-func (o *errorOutput) StdErr() Output     { return o }
-func (o *errorOutput) StdOut() Output     { return o }
-func (o *errorOutput) Map(LineMap) Output { return o }
+func (o *errorOutput) StdErr() Output                    { return o }
+func (o *errorOutput) StdOut() Output                    { return o }
+func (o *errorOutput) Map(LineMap) Output                { return o }
+func (o *errorOutput) Pipeline(pipeline.Pipeline) Output { return o }
 
 func (o *errorOutput) Stream(io.Writer) error           { return o.err }
 func (o *errorOutput) StreamLines(func(string)) error   { return o.err }

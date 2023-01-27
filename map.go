@@ -1,10 +1,11 @@
 package run
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"io"
+
+	"go.bobheadxi.dev/streamline/pipeline"
 )
 
 // LineMap allows modifications of individual lines from Output and enables callbacks
@@ -37,59 +38,37 @@ func MapJQ(query string) (LineMap, error) {
 	}, nil
 }
 
-type lineMaps []LineMap
+type lineMapPipelineAdapter struct {
+	ctx     context.Context
+	buffer  *bytes.Buffer
+	lineMap LineMap
+}
 
-// Pipe applies lineMaps sequentially to dst from src, and returns the number of bytes
-// read.
-func (m lineMaps) Pipe(ctx context.Context, src io.Reader, dst io.Writer, close func()) (int64, error) {
-	if close != nil {
-		defer close()
+var _ pipeline.Pipeline = &lineMapPipelineAdapter{}
+
+func (l *lineMapPipelineAdapter) Inactive() bool { return l == nil || l.lineMap == nil }
+
+func (l *lineMapPipelineAdapter) ProcessLine(line []byte) ([]byte, error) {
+	// Use a shared buffer when applying this LineMap - it gets reset on each
+	// line, and lines are processed synchronously.
+	l.buffer.Reset()
+
+	buf := tracedBuffer{Buffer: l.buffer}
+	_, err := l.lineMap(l.ctx, line, &buf)
+	if !buf.writeCalled || err != nil {
+		return nil, err // omit the line or return the error
 	}
+	return buf.Bytes(), nil
+}
 
-	scanner := bufio.NewScanner(src)
+type tracedBuffer struct {
+	// writeCalled indicates that Write was called at all, even with empty input.
+	writeCalled bool
 
-	var buf bytes.Buffer
-	var totalWritten int64
-	for scanner.Scan() {
-		line := scanner.Bytes()
+	*bytes.Buffer
+}
 
-		// Defaults to true because if no map funcs unset this, then we will write the
-		// entire line.
-		writeCalled := true
-
-		for _, f := range m {
-			tb := &tracedBuffer{Buffer: &buf}
-			buffered, err := f(ctx, line, tb)
-			if err != nil {
-				return totalWritten, err
-			}
-			writeCalled = tb.writeCalled
-
-			// Nothing written => end
-			if buffered == 0 {
-				break
-			}
-
-			// Copy bytes and reset for the next map
-			line = make([]byte, buf.Len())
-			copy(line, buf.Bytes())
-			buf.Reset()
-		}
-
-		// If anything was written, or a write was called even with an ending, treat it as
-		// a line and add a line ending for convenience, unless it already has a line
-		// ending.
-		if writeCalled && !bytes.HasSuffix(line, []byte("\n")) {
-			written, err := dst.Write(append(line, '\n'))
-			totalWritten += int64(written)
-			if err != nil {
-				return totalWritten, err
-			}
-		}
-
-		// Reset for next line
-		buf.Reset()
-	}
-
-	return totalWritten, scanner.Err()
+func (t *tracedBuffer) Write(b []byte) (int, error) {
+	t.writeCalled = true
+	return t.Buffer.Write(b)
 }
