@@ -1,14 +1,16 @@
 package run
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os/exec"
-	"strings"
 	"sync"
 
 	"github.com/djherbis/nio/v3"
+	"go.bobheadxi.dev/streamline"
+	"go.bobheadxi.dev/streamline/pipeline"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -19,11 +21,17 @@ import (
 // of outputs, such as multi-outputs and error-only outputs, without complicating the core
 // commandOutput implementation.
 type Output interface {
-	// Map adds a LineMap function to be applied to this Output. It is only applied at
-	// aggregation time using e.g. Stream, Lines, and so on. Multiple LineMaps are applied
-	// sequentially, with the result of previous LineMaps propagated to subsequent
-	// LineMaps.
+	// Map adds a LineMap function to be applied to this Output.
+	//
+	// Deprecated: Use Pipeline instead.
 	Map(f LineMap) Output
+	// Pipeline is similar to Map, but uses a new interface that provides more flexible
+	// ways of manipulating output on the stream. It is only applied at aggregation time
+	// using e.g. Stream, Lines, and so on. Multiple Pipelines are applied sequentially,
+	// with the result of previous Pipelines propagated to subsequent Pipelines.
+	//
+	// For more details, refer to the pipeline.Pipeline documentation.
+	Pipeline(p pipeline.Pipeline) Output
 
 	// TODO wishlist functionality
 	// Mode(mode OutputMode) Output
@@ -64,16 +72,9 @@ type Output interface {
 type commandOutput struct {
 	ctx context.Context
 
-	// reader is set to the reader side of the output pipe. It does not have mapFuncs
-	// applied, they are applied at aggregation time. When the command exits, the error
-	// should be raised from the reader after the reader's buffer is exhausted.
-	reader io.ReadCloser
-
-	// mapFuncs define LineMaps to be applied at aggregation time.
-	mapFuncs lineMaps
-
-	// mappedData is set by incremental aggregators like Read, and holds mapped results.
-	mappedData io.Reader
+	// stream is the underlying output aggregation implementation. It reads from a
+	// read side of a pipe which receives output from a command.
+	stream *streamline.Stream
 
 	// waitAndCloseFunc should only be called via doWaitOnce(). It should wait for command
 	// exit and handle setting an error such that once reads from reader are complete, the
@@ -157,7 +158,7 @@ func attachAndRun(
 
 	output := &commandOutput{
 		ctx:    ctx,
-		reader: outputReader,
+		stream: streamline.New(outputReader),
 	}
 
 	output.waitAndCloseFunc = func() error {
@@ -183,7 +184,15 @@ func attachAndRun(
 }
 
 func (o *commandOutput) Map(f LineMap) Output {
-	o.mapFuncs = append(o.mapFuncs, f)
+	return o.Pipeline(&lineMapPipelineAdapter{
+		ctx:     o.ctx,
+		buffer:  &bytes.Buffer{},
+		lineMap: f,
+	})
+}
+
+func (o *commandOutput) Pipeline(p pipeline.Pipeline) Output {
+	o.stream = o.stream.WithPipeline(p)
 	return o
 }
 
@@ -199,10 +208,7 @@ func (o *commandOutput) StreamLines(dst func(line string)) error {
 
 	go o.waitAndClose()
 
-	_, err := o.mapFuncs.Pipe(o.ctx, o.reader, newLineWriter(func(b []byte) {
-		dst(string(b))
-	}), nil)
-	return err
+	return o.stream.Stream(dst)
 }
 
 func (o *commandOutput) Lines() ([]string, error) {
@@ -210,22 +216,7 @@ func (o *commandOutput) Lines() ([]string, error) {
 
 	go o.waitAndClose()
 
-	// export lines
-	linesC := make(chan string, 3)
-	errC := make(chan error)
-	go func() {
-		dst := newLineWriter(func(line []byte) { linesC <- string(line) })
-		_, err := o.mapFuncs.Pipe(o.ctx, o.reader, dst, func() { close(linesC) })
-		errC <- err
-	}()
-
-	// aggregate lines from results
-	lines := make([]string, 0, 10)
-	for line := range linesC {
-		lines = append(lines, line)
-	}
-
-	return lines, <-errC
+	return o.stream.Lines()
 }
 
 func (o *commandOutput) JQ(query string) ([]byte, error) {
@@ -244,11 +235,9 @@ func (o *commandOutput) JQ(query string) ([]byte, error) {
 func (o *commandOutput) String() (string, error) {
 	trace.SpanFromContext(o.ctx).AddEvent("String")
 
-	var sb strings.Builder
-	if err := o.Stream(&sb); err != nil {
-		return sb.String(), err
-	}
-	return strings.TrimSuffix(sb.String(), "\n"), nil
+	go o.waitAndClose()
+
+	return o.stream.String()
 }
 
 func (o *commandOutput) Read(p []byte) (int, error) {
@@ -256,23 +245,7 @@ func (o *commandOutput) Read(p []byte) (int, error) {
 
 	go o.waitAndClose()
 
-	if len(o.mapFuncs) == 0 {
-		// Happy path, just read
-		return o.reader.Read(p)
-	}
-
-	// Otherwise, we can only really read the whole thing and send the data back bit by
-	// bit as read requests come in.
-	if o.mappedData == nil {
-		reader, writer := nio.Pipe(makeUnboundedBuffer())
-		go func() {
-			_, err := o.mapFuncs.Pipe(o.ctx, o.reader, writer, nil)
-			writer.CloseWithError(err)
-		}()
-		o.mappedData = reader
-	}
-
-	return o.mappedData.Read(p)
+	return o.stream.Read(p)
 }
 
 // WriteTo implements io.WriterTo, and returns int64 instead of int because of:
@@ -282,21 +255,13 @@ func (o *commandOutput) WriteTo(dst io.Writer) (int64, error) {
 
 	go o.waitAndClose()
 
-	if len(o.mapFuncs) == 0 {
-		// Happy path, directly pipe output
-		return io.Copy(dst, o.reader)
-	}
-
-	return o.mapFuncs.Pipe(o.ctx, o.reader, dst, nil)
+	return o.stream.WriteTo(dst)
 }
 
 func (o *commandOutput) Wait() error {
 	trace.SpanFromContext(o.ctx).AddEvent("Wait")
 
-	err := o.waitAndClose()
-	// Wait does not consume output, so prevent further reads from occuring.
-	o.reader.Close()
-	return err
+	return o.waitAndClose()
 }
 
 // waitAndClose waits for command completion and closes the write half of the reader. Most
