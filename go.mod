@@ -8,7 +8,7 @@ require (
 	github.com/djherbis/nio/v3 v3.0.1
 	github.com/frankban/quicktest v1.14.3
 	github.com/itchyny/gojq v0.12.11
-	go.bobheadxi.dev/streamline v1.2.0
+	go.bobheadxi.dev/streamline v1.2.1
 	go.opentelemetry.io/otel v1.11.0
 	go.opentelemetry.io/otel/sdk v1.11.0
 	go.opentelemetry.io/otel/trace v1.11.0
