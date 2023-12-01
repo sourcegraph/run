@@ -45,8 +45,8 @@ type Output interface {
 	// Lines waits for command completion and aggregates mapped output from the command as
 	// a slice of lines.
 	Lines() ([]string, error)
-	// Lines waits for command completion and aggregates mapped output from the command as
-	// a combined string.
+	// String waits for command completion and aggregates mapped output from the command as a
+	// single string.
 	String() (string, error)
 	// JQ waits for command completion executes a JQ query against the entire output.
 	//
