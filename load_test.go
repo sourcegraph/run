@@ -44,14 +44,16 @@ func TestLargeOutput(t *testing.T) {
 			// read a chunk of a file.
 			b := make([]byte, 1024)
 			n, err := output.Read(b)
-			c.Assert(err, qt.IsNil)
+			if err != io.EOF {
+				c.Assert(err, qt.IsNil)
+			}
 
 			// track the entire output
 			out.Write(b[:n])
 		}
 
 		c.Assert(out.String(), qt.Equals, string(largeOutputContents),
-			qt.Commentf("Only got %d bytes", out.Len()))
+			qt.Commentf("Only got %d bytes, expected %d", out.Len(), len(largeOutputContents)))
 	})
 
 	c.Run("mapped read", func(c *qt.C) {

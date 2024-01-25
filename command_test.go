@@ -62,7 +62,9 @@ var outputTests = []func(c *qt.C, out run.Output, expect string, expectError boo
 		c.Run("Read: fixed bytes", func(c *qt.C) {
 			b := make([]byte, 100)
 			n, err := out.Read(b)
-			if !expectError {
+			// We expect io.EOF if we are done reading - the content assertion
+			// should still pass.
+			if !expectError && err != io.EOF {
 				c.Assert(err, qt.IsNil)
 			}
 			c.Assert(string(b[0:n]), qt.Equals, fmt.Sprintf("%s\n", expect))
