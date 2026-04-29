@@ -1,6 +1,6 @@
 module github.com/sourcegraph/run
 
-go 1.25.9
+go 1.25
 
 require (
 	bitbucket.org/creachadair/shell v0.0.7
