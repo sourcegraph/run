@@ -39,7 +39,7 @@ func execJQBytes(ctx context.Context, jqCoode *gojq.Code, content []byte) ([]byt
 
 // execJQ executes the compiled jq query against content from reader.
 func execJQ(ctx context.Context, jqCode *gojq.Code, reader io.Reader) ([]byte, error) {
-	var input interface{}
+	var input any
 	if err := json.NewDecoder(reader).Decode(&input); err != nil {
 		return nil, fmt.Errorf("json: %w", err)
 	}
